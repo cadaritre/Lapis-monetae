@@ -41,28 +41,29 @@ pub enum NetworkType {
 impl NetworkType {
     pub fn default_rpc_port(&self) -> u16 {
         match self {
-            NetworkType::Mainnet => 16110,
-            NetworkType::Testnet => 16210,
-            NetworkType::Simnet => 16510,
-            NetworkType::Devnet => 16610,
+            // LMT ports (avoid collisions with Kaspa defaults)
+            NetworkType::Mainnet => 26110,
+            NetworkType::Testnet => 26210,
+            NetworkType::Simnet => 26510,
+            NetworkType::Devnet => 26610,
         }
     }
 
     pub fn default_borsh_rpc_port(&self) -> u16 {
         match self {
-            NetworkType::Mainnet => 17110,
-            NetworkType::Testnet => 17210,
-            NetworkType::Simnet => 17510,
-            NetworkType::Devnet => 17610,
+            NetworkType::Mainnet => 27110,
+            NetworkType::Testnet => 27210,
+            NetworkType::Simnet => 27510,
+            NetworkType::Devnet => 27610,
         }
     }
 
     pub fn default_json_rpc_port(&self) -> u16 {
         match self {
-            NetworkType::Mainnet => 18110,
-            NetworkType::Testnet => 18210,
-            NetworkType::Simnet => 18510,
-            NetworkType::Devnet => 18610,
+            NetworkType::Mainnet => 28110,
+            NetworkType::Testnet => 28210,
+            NetworkType::Simnet => 28510,
+            NetworkType::Devnet => 28610,
         }
     }
 
@@ -241,14 +242,14 @@ impl NetworkId {
         // this reasoning so we keep it on the same port in order to simplify RPC client management (hence [`default_rpc_port`]
         // is defined on the [`NetworkType`] struct
         match self.network_type {
-            NetworkType::Mainnet => 16111,
+            NetworkType::Mainnet => 26111,
             NetworkType::Testnet => match self.suffix {
-                Some(10) => 16211,
-                Some(11) => 16311,
-                None | Some(_) => 16411,
+                Some(10) => 26211,
+                Some(11) => 26311,
+                None | Some(_) => 26411,
             },
-            NetworkType::Simnet => 16511,
-            NetworkType::Devnet => 16611,
+            NetworkType::Simnet => 26511,
+            NetworkType::Devnet => 26611,
         }
     }
 

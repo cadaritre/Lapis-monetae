@@ -8,39 +8,52 @@ pub mod xoshiro;
 
 use std::cmp::max;
 
-use crate::matrix::Matrix;
 use kaspa_consensus_core::{hashing, header::Header, BlockLevel};
-use kaspa_hashes::PowHash;
+use kaspa_hashes::Hash;
 use kaspa_math::Uint256;
+use randomx_rs::{RandomXCache, RandomXFlag, RandomXVM};
 
 /// State is an intermediate data structure with pre-computed values to speed up mining.
 pub struct State {
-    pub(crate) matrix: Matrix,
     pub(crate) target: Uint256,
-    // PRE_POW_HASH || TIME || 32 zero byte padding; without NONCE
-    pub(crate) hasher: PowHash,
+    pub(crate) pre_pow_hash: Hash,
+    pub(crate) timestamp: u64,
+    pub(crate) vm: RandomXVM,
 }
 
 impl State {
     #[inline]
     pub fn new(header: &Header) -> Self {
         let target = Uint256::from_compact_target_bits(header.bits);
-        // Zero out the time and nonce.
+        // Zero out the time and nonce to keep a stable pre-PoW hash.
         let pre_pow_hash = hashing::header::hash_override_nonce_time(header, 0, 0);
-        // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
-        let hasher = PowHash::new(pre_pow_hash, header.timestamp);
-        let matrix = Matrix::generate(pre_pow_hash);
+        let flags = RandomXFlag::get_recommended_flags();
+        let cache = RandomXCache::new(flags, &pre_pow_hash.as_bytes())
+            .expect("RandomX cache initialization failed for PoW");
+        let vm = RandomXVM::new(flags, Some(cache), None).expect("RandomX VM initialization failed for PoW");
 
-        Self { matrix, target, hasher }
+        Self { target, pre_pow_hash, timestamp: header.timestamp, vm }
+    }
+
+    pub fn from_pre_pow(pre_pow_hash: Hash, timestamp: u64, bits: u32) -> Self {
+        let target = Uint256::from_compact_target_bits(bits);
+        let flags = RandomXFlag::get_recommended_flags();
+        let cache =
+            RandomXCache::new(flags, &pre_pow_hash.as_bytes()).expect("RandomX cache initialization failed for PoW");
+        let vm = RandomXVM::new(flags, Some(cache), None).expect("RandomX VM initialization failed for PoW");
+
+        Self { target, pre_pow_hash, timestamp, vm }
     }
 
     #[inline]
     #[must_use]
-    /// PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
     pub fn calculate_pow(&self, nonce: u64) -> Uint256 {
-        // Hasher already contains PRE_POW_HASH || TIME || 32 zero byte padding; so only the NONCE is missing
-        let hash = self.hasher.clone().finalize_with_nonce(nonce);
-        let hash = self.matrix.heavy_hash(hash);
+        let input = build_randomx_input(self.pre_pow_hash, self.timestamp, nonce);
+        let hash_bytes = self
+            .vm
+            .calculate_hash(&input)
+            .expect("RandomX PoW hash calculation failed");
+        let hash = Hash::from_slice(&hash_bytes);
         Uint256::from_le_bytes(hash.as_bytes())
     }
 
@@ -72,4 +85,12 @@ pub fn calc_block_level_check_pow(header: &Header, max_block_level: BlockLevel) 
 pub fn calc_level_from_pow(pow: Uint256, max_block_level: BlockLevel) -> BlockLevel {
     let signed_block_level = max_block_level as i64 - pow.bits() as i64;
     max(signed_block_level, 0) as BlockLevel
+}
+
+fn build_randomx_input(pre_pow_hash: Hash, timestamp: u64, nonce: u64) -> Vec<u8> {
+    let mut input = Vec::with_capacity(48);
+    input.extend_from_slice(&pre_pow_hash.as_bytes());
+    input.extend_from_slice(&timestamp.to_le_bytes());
+    input.extend_from_slice(&nonce.to_le_bytes());
+    input
 }
