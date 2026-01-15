@@ -1,7 +1,7 @@
 pub use super::{
     bps::{Bps, TenBps},
     constants::consensus::*,
-    genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TESTNET11_GENESIS, TESTNET_GENESIS},
+    genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, LMT_MAINNET_GENESIS, SIMNET_GENESIS, TESTNET11_GENESIS, TESTNET_GENESIS},
 };
 use crate::{
     constants::STORAGE_MASS_PARAMETER,
@@ -477,7 +477,7 @@ pub const MAINNET_PARAMS: Params = Params {
         "lmt-seeder.lapismonetae.org",
     ],
     net: NetworkId::new(NetworkType::Mainnet),
-    genesis: GENESIS,
+    genesis: LMT_MAINNET_GENESIS,
     prior_ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     timestamp_deviation_tolerance: TIMESTAMP_DEVIATION_TOLERANCE,
     prior_target_time_per_block: 1000,
@@ -625,7 +625,7 @@ pub const SIMNET_PARAMS: Params = Params {
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
 
-    skip_proof_of_work: true, // For simnet only, PoW can be simulated by default
+    skip_proof_of_work: false, // RandomX required for all networks
     max_block_level: 250,
     pruning_proof_m: PRUNING_PROOF_M,
 

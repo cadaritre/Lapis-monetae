@@ -1,10 +1,8 @@
-use crate::matrix::Matrix;
 use js_sys::BigInt;
 use kaspa_consensus_client::Header;
 use kaspa_consensus_client::HeaderT;
 use kaspa_consensus_core::hashing;
 use kaspa_hashes::Hash;
-use kaspa_hashes::PowHash;
 use kaspa_math::Uint256;
 use kaspa_utils::hex::FromHex;
 use kaspa_utils::hex::ToHex;
@@ -39,15 +37,11 @@ impl PoW {
         let header = header.as_ref();
         let header = header.inner();
 
-        // Get required target from header bits.
-        let target = Uint256::from_compact_target_bits(header.bits);
         // Zero out the time and nonce.
         let pre_pow_hash = hashing::header::hash_override_nonce_time(header, 0, 0);
-        // PRE_POW_HASH || TIME || 32 zero byte padding || NONCE
-        let hasher = PowHash::new(pre_pow_hash, timestamp.unwrap_or(header.timestamp));
-        let matrix = Matrix::generate(pre_pow_hash);
+        let inner = crate::State::from_pre_pow(pre_pow_hash, timestamp.unwrap_or(header.timestamp), header.bits);
 
-        Ok(Self { inner: crate::State { matrix, target, hasher }, pre_pow_hash })
+        Ok(Self { inner, pre_pow_hash })
     }
 
     /// The target based on the provided bits.
@@ -80,14 +74,9 @@ impl PoW {
         // Convert the pre_pow_hash from hex string to Hash
         let pre_pow_hash = Hash::from_hex(pre_pow_hash).map_err(|err| Error::custom(format!("{err:?}")))?;
 
-        // Generate the target from compact target bits if provided
-        let target = Uint256::from_compact_target_bits(target_bits.unwrap_or_default());
+        let inner = crate::State::from_pre_pow(pre_pow_hash, timestamp, target_bits.unwrap_or_default());
 
-        // Initialize the matrix and hasher using pre_pow_hash and timestamp
-        let matrix = Matrix::generate(pre_pow_hash);
-        let hasher = PowHash::new(pre_pow_hash, timestamp);
-
-        Ok(PoW { inner: crate::State { matrix, target, hasher }, pre_pow_hash })
+        Ok(PoW { inner, pre_pow_hash })
     }
 }
 

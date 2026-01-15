@@ -87,6 +87,9 @@ pub struct Args {
     pub disable_upnp: bool,
     #[serde(rename = "nodnsseed")]
     pub disable_dns_seeding: bool,
+    /// Enable DNS seeding even if `nodnsseed` is true (useful while keeping safe defaults)
+    #[serde(rename = "dnsseed")]
+    pub enable_dns_seeding: bool,
     #[serde(rename = "nogrpc")]
     pub disable_grpc: bool,
     pub ram_scale: f64,
@@ -138,7 +141,9 @@ impl Default for Args {
             prealloc_amount: 10_000_000_000,
 
             disable_upnp: false,
-            disable_dns_seeding: false,
+            // Safe default for a new independent network: do not try to discover peers unless explicitly enabled
+            disable_dns_seeding: true,
+            enable_dns_seeding: false,
             disable_grpc: false,
             ram_scale: 1.0,
             retention_period_days: None,
@@ -230,7 +235,7 @@ pub fn cli() -> Command {
                 .num_args(0..=1)
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help("Interface:port to listen for gRPC connections (default port: 16110, testnet: 16210)."),
+                .help("Interface:port to listen for gRPC connections (default port: 26110, testnet: 26210)."),
         )
         .arg(
             Arg::new("rpclisten-borsh")
@@ -278,7 +283,7 @@ pub fn cli() -> Command {
                 .value_name("IP[:PORT]")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
-                .help("Add an interface:port to listen for connections (default all interfaces port: 16111, testnet: 16211)."),
+                .help("Add an interface:port to listen for connections (default all interfaces port: 26111, testnet: 26211)."),
         )
         .arg(
             Arg::new("outpeers")
@@ -363,6 +368,7 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
         )
         .arg(arg!(--"disable-upnp" "Disable upnp"))
         .arg(arg!(--"nodnsseed" "Disable DNS seeding for peers"))
+        .arg(arg!(--dnsseed "Enable DNS seeding for peers (overrides --nodnsseed default)"))
         .arg(arg!(--"nogrpc" "Disable gRPC server"))
         .arg(
             Arg::new("ram-scale")
@@ -456,6 +462,7 @@ impl Args {
             block_template_cache_lifetime: defaults.block_template_cache_lifetime,
             disable_upnp: arg_match_unwrap_or::<bool>(&m, "disable-upnp", defaults.disable_upnp),
             disable_dns_seeding: arg_match_unwrap_or::<bool>(&m, "nodnsseed", defaults.disable_dns_seeding),
+            enable_dns_seeding: arg_match_unwrap_or::<bool>(&m, "dnsseed", defaults.enable_dns_seeding),
             disable_grpc: arg_match_unwrap_or::<bool>(&m, "nogrpc", defaults.disable_grpc),
             ram_scale: arg_match_unwrap_or::<f64>(&m, "ram-scale", defaults.ram_scale),
             retention_period_days: m.get_one::<f64>("retention-period-days").cloned().or(defaults.retention_period_days),
