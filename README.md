@@ -5,7 +5,7 @@ Lapis Monetae (LMT) is a Rust-based full node derived from the Kaspa codebase, a
 ## Consensus & Roadmap
 - Supply and Emission: Adjusted to a target of 100,000,000 LMT over ~8 years.
 - Consensus: PoW-first with planned PoA (Proof of Authority) augmentation for governance and anchoring.
-- Mining: RandomX integration is planned to complement existing PoW.
+- Mining: RandomX PoW is active; stratum/pool tooling is external.
 - Platform Integration: Planned integration with the "Lapis Mens" platform for ecosystem services.
 
 ## Addresses & Networks
@@ -77,6 +77,15 @@ cargo run --release --bin lmtd -- -C /path/to/configfile.toml
 See available arguments:
 ```bash
 cargo run --release --bin lmtd -- --help
+```
+
+## Mining (solo/local)
+LMT miners must solve templates from the node RPC (`get_block_template`) and submit via `submit_block`.
+This repo does not ship a stratum server or pool; for local testing use RPC directly or a custom bridge.
+
+Run a local node and allow unsynced mining for tests:
+```bash
+cargo run --release --bin lmtd -- --enable-unsynced-mining
 ```
 
 ## wRPC

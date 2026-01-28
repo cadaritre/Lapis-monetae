@@ -26,7 +26,7 @@ fn main() {
     ];
 
     let timestamps = [
-        ("mainnet", 1637609671037u64),
+        ("mainnet", 1769947200000u64),
         ("testnet", 0x17c5f62fbb6),
         ("simnet", 0x17c5f62fbb6),
         ("devnet", 0x11e9db49828),
