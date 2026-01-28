@@ -66,8 +66,8 @@ impl From<(&Header, &'static [u8])> for GenesisBlock {
 /// The genesis block of the block-DAG which serves as the public transaction ledger for the main network.
 pub const GENESIS: GenesisBlock = GenesisBlock {
     hash: Hash::from_bytes([
-        0xf5, 0x43, 0xb0, 0xbd, 0xcc, 0x8e, 0x07, 0x13, 0x6a, 0xd2, 0x4f, 0xd2, 0x68, 0x9c, 0x02, 0x0a, 0xbb, 0xbe, 0x3d, 0x04, 0x5c,
-        0x13, 0xb1, 0xb7, 0x42, 0x10, 0x31, 0xfa, 0xa5, 0x4e, 0x4c, 0x47,
+        0x62, 0x1f, 0xfd, 0xbc, 0x95, 0x0c, 0xe7, 0x6e, 0xd4, 0x31, 0x20, 0xf9, 0x99, 0xb1, 0x3a, 0x5e, 0x86, 0xba, 0x8f, 0x69, 0x5b,
+        0x8b, 0xad, 0xc0, 0x09, 0xb3, 0xd7, 0xbd, 0xf9, 0xf4, 0xcb, 0x0f,
     ]),
     version: 0,
     hash_merkle_root: Hash::from_bytes([
@@ -75,9 +75,9 @@ pub const GENESIS: GenesisBlock = GenesisBlock {
         0x86, 0xe9, 0xff, 0x55, 0xc4, 0x0b, 0x7e, 0x31, 0x60, 0x3c, 0xcb,
     ]),
     utxo_commitment: EMPTY_MUHASH,
-    timestamp: 1637609671037,
+    timestamp: 1769947200000,
     bits: 0x207fffff,
-    nonce: 0x3,
+    nonce: 0x1,
     daa_score: 0,
     #[rustfmt::skip]
     coinbase_payload: &[
@@ -93,11 +93,6 @@ pub const GENESIS: GenesisBlock = GenesisBlock {
 };
 
 /// Lapis Monetae mainnet genesis.
-///
-/// NOTE: this is currently an alias for `GENESIS` to keep the network runnable while
-/// the final mined LMT genesis constants are being generated and verified.
-/// Replace this constant with the real LMT genesis (hash/merkle/utxo_commitment/timestamp/bits/nonce/payload)
-/// once you have your final genesis parameters.
 pub const LMT_MAINNET_GENESIS: GenesisBlock = GENESIS;
 
 pub const TESTNET_GENESIS: GenesisBlock = GenesisBlock {
