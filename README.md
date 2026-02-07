@@ -1,16 +1,20 @@
 # Lapis Monetae (LMT)
 
-Lapis Monetae (LMT) is a Rust-based full node derived from the Kaspa codebase, adapted to run an independent network and currency named Lapis Monetae (ticker: LMT). This repository provides consensus, networking (P2P), RPC, wallet, and tooling necessary to operate the LMT network.
+Lapis Monetae (LMT) is a Rust full node forked from the Kaspa codebase and adapted to run an independent network and currency named Lapis Monetae (ticker: LMT).
 
-## Consensus & Roadmap
-- Supply and Emission: Adjusted to a target of 100,000,000 LMT over ~8 years.
-- Consensus: PoW-first with planned PoA (Proof of Authority) augmentation for governance and anchoring.
-- Mining: RandomX PoW is active; stratum/pool tooling is external.
-- Platform Integration: Planned integration with the "Lapis Mens" platform for ecosystem services.
+This workspace contains:
+- Full node daemon (`lmtd` binary in `kaspad` crate)
+- Consensus, P2P, RPC (gRPC + wRPC), indexing and mining components
+- CLI and wallet-related crates (native + wasm)
 
-## Addresses & Networks
-- Address prefixes: `lmt:` (mainnet), `lmttest:`, `lmtsim:`, `lmtdev:`.
-- Network name strings: `lmt-mainnet`, `lmt-testnet-<suffix>`, etc.
+## Current network identity in code
+- Address prefixes: `lmt:` (mainnet), `lmttest:`, `lmtsim:`, `lmtdev:`
+- Network identifiers: `mainnet`, `testnet-<suffix>`, `devnet`, `simnet`
+- Prefixed network identifier format: `lmt-<network-id>` (for example `lmt-mainnet`)
+
+## Consensus / mining notes
+- PoW uses RandomX (implemented in `consensus/pow` via `randomx-rs`)
+- Emission target logic is configured around a 100,000,000 LMT supply model in coinbase subsidy code
 
 ## Build
 ### Linux
@@ -61,31 +65,27 @@ Install Rust, wasm-pack, wasm32 target (optional), then clone and enter the repo
 Start a mainnet node:
 ```bash
 cargo run --release --bin lmtd
-# or with UTXO-index enabled (needed when using wallets)
+# or with UTXO index enabled (needed for some wallet queries)
 cargo run --release --bin lmtd -- --utxoindex
 ```
-Start a testnet node:
+
+Start a testnet node (default suffix is `10` unless overridden):
 ```bash
 cargo run --release --bin lmtd -- --testnet
+# explicit suffix example
+cargo run --release --bin lmtd -- --testnet --netsuffix=11
 ```
+
 Using a config file:
 ```bash
 cargo run --release --bin lmtd -- --configfile /path/to/configfile.toml
 # or
 cargo run --release --bin lmtd -- -C /path/to/configfile.toml
 ```
+
 See available arguments:
 ```bash
 cargo run --release --bin lmtd -- --help
-```
-
-## Mining (solo/local)
-LMT miners must solve templates from the node RPC (`get_block_template`) and submit via `submit_block`.
-This repo does not ship a stratum server or pool; for local testing use RPC directly or a custom bridge.
-
-Run a local node and allow unsynced mining for tests:
-```bash
-cargo run --release --bin lmtd -- --enable-unsynced-mining
 ```
 
 ## wRPC
@@ -102,20 +102,17 @@ wRPC is optional and can be enabled via:
 # or defaults
 --rpclisten-borsh=default
 ```
-JSON protocol is based on LMT data structures and is data-structure-version agnostic. Clients for JS/TS are available via the WASM framework.
 
-## CLI & Wallet
-From `cli/`:
+## CLI
+Run the CLI:
 ```bash
-cd cli
-cargo run --release
+cargo run --release -p kaspa-cli
 ```
-This provides a CLI-driven RPC interface to the node and a terminal wallet runtime compatible with the WASM SDK.
 
-## Tests, Lints, Benchmarks
+## Tests, lints, benchmarks
 ```bash
 cargo test --release
-./check  # lints
+./check  # fmt + clippy checks
 cargo bench
 ```
 
