@@ -1,16 +1,64 @@
 # Lapis Monetae (LMT)
 
-Lapis Monetae (LMT) is a Rust-based full node derived from the Kaspa codebase, adapted to run an independent network and currency named Lapis Monetae (ticker: LMT). This repository provides consensus, networking (P2P), RPC, wallet, and tooling necessary to operate the LMT network.
+Lapis Monetae (LMT) is a Rust full node derived from Kaspa, adapted for an independent network and currency (ticker: **LMT**).
+This repository includes consensus, P2P, RPC, wallet/CLI tooling, and mining-template management.
 
-## Consensus & Roadmap
-- Supply and Emission: Adjusted to a target of 100,000,000 LMT over ~8 years.
-- Consensus: PoW-first with planned PoA (Proof of Authority) augmentation for governance and anchoring.
-- Mining: RandomX PoW is active; stratum/pool tooling is external.
-- Platform Integration: Planned integration with the "Lapis Mens" platform for ecosystem services.
+## Protocol facts (from current code)
+- **PoW algorithm:** RandomX (`randomx-rs`) is used for block validation/mining.
+- **Block target:** 1 second pre-Crescendo, then 100 ms post-Crescendo (10 BPS).
+- **Address prefixes:** `lmt:`, `lmttest:`, `lmtsim:`, `lmtdev:`.
+- **Network name format:** `lmt-mainnet`, `lmt-testnet-<suffix>`, etc.
 
-## Addresses & Networks
-- Address prefixes: `lmt:` (mainnet), `lmttest:`, `lmtsim:`, `lmtdev:`.
-- Network name strings: `lmt-mainnet`, `lmt-testnet-<suffix>`, etc.
+## Emission / coin distribution (as implemented)
+LMT emission is enforced in consensus coinbase logic.
+
+- Unit: `1 LMT = 100,000,000 sompi`.
+- Pre-deflation subsidy base is `50,000,000,000` sompi per block before scaling (500 LMT at 1 BPS).
+- Deflationary phase starts at DAA score `15,778,800 - 259,200 = 15,519,600`.
+- Deflation table has 426 steps.
+- To fit an ~8-year target schedule, subsidy "months" are compressed to `556,920` seconds per step.
+- A dynamic **emission divisor** is computed at startup of the coinbase manager so total scheduled emission targets **~100,000,000 LMT**.
+- Subsidies are then rounded with `div_ceil` so rewards remain valid across BPS changes (including Crescendo activation).
+
+In short: the schedule is not a README-only promise; it is encoded directly in `consensus/src/processes/coinbase.rs` and network params.
+
+## Mining (solo/local)
+This repo ships the node and block-template logic, but **not** a built-in stratum/pool server binary.
+
+Miner flow:
+1. Request a template with RPC `get_block_template`.
+2. Build PoW input from pre-PoW hash + timestamp + nonce.
+3. Solve RandomX target.
+4. Submit solved block via RPC `submit_block`.
+
+Run local node for mining tests:
+```bash
+cargo run --release --bin lmtd -- --enable-unsynced-mining
+```
+
+Start mainnet node:
+```bash
+cargo run --release --bin lmtd
+# optional UTXO index (useful for wallet/indexer flows)
+cargo run --release --bin lmtd -- --utxoindex
+```
+
+Start testnet node:
+```bash
+cargo run --release --bin lmtd -- --testnet
+```
+
+Using a config file:
+```bash
+cargo run --release --bin lmtd -- --configfile /path/to/configfile.toml
+# or
+cargo run --release --bin lmtd -- -C /path/to/configfile.toml
+```
+
+See all arguments:
+```bash
+cargo run --release --bin lmtd -- --help
+```
 
 ## Build
 ### Linux
@@ -57,37 +105,6 @@ export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
 ```
 Install Rust, wasm-pack, wasm32 target (optional), then clone and enter the repo.
 
-## Running the node
-Start a mainnet node:
-```bash
-cargo run --release --bin lmtd
-# or with UTXO-index enabled (needed when using wallets)
-cargo run --release --bin lmtd -- --utxoindex
-```
-Start a testnet node:
-```bash
-cargo run --release --bin lmtd -- --testnet
-```
-Using a config file:
-```bash
-cargo run --release --bin lmtd -- --configfile /path/to/configfile.toml
-# or
-cargo run --release --bin lmtd -- -C /path/to/configfile.toml
-```
-See available arguments:
-```bash
-cargo run --release --bin lmtd -- --help
-```
-
-## Mining (solo/local)
-LMT miners must solve templates from the node RPC (`get_block_template`) and submit via `submit_block`.
-This repo does not ship a stratum server or pool; for local testing use RPC directly or a custom bridge.
-
-Run a local node and allow unsynced mining for tests:
-```bash
-cargo run --release --bin lmtd -- --enable-unsynced-mining
-```
-
 ## wRPC
 wRPC is optional and can be enabled via:
 - JSON protocol:
@@ -102,7 +119,6 @@ wRPC is optional and can be enabled via:
 # or defaults
 --rpclisten-borsh=default
 ```
-JSON protocol is based on LMT data structures and is data-structure-version agnostic. Clients for JS/TS are available via the WASM framework.
 
 ## CLI & Wallet
 From `cli/`:
@@ -110,9 +126,8 @@ From `cli/`:
 cd cli
 cargo run --release
 ```
-This provides a CLI-driven RPC interface to the node and a terminal wallet runtime compatible with the WASM SDK.
 
-## Tests, Lints, Benchmarks
+## Checks
 ```bash
 cargo test --release
 ./check  # lints
