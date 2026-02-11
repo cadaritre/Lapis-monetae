@@ -4,7 +4,7 @@ import subprocess
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
 CONFIG_PATH = Path(__file__).with_name("config.json")
@@ -24,11 +24,25 @@ def save_config(data):
 
 
 class BridgeGui:
+    BG = "#0f1115"
+    PANEL = "#171a21"
+    PANEL_ALT = "#1d2230"
+    FG = "#e6e8ef"
+    MUTED = "#9aa3b2"
+    ACCENT = "#5da9ff"
+    SUCCESS = "#37d67a"
+    WARN = "#ffcc66"
+
     def __init__(self, root):
         self.root = root
-        self.root.title("LMT Stratum Bridge GUI")
+        self.root.title("LMT Miner Control Center")
+        self.root.geometry("1120x760")
+        self.root.minsize(980, 660)
+        self.root.configure(bg=self.BG)
         self.process = None
+        self.miner_process = None
         self.log_queue = queue.Queue()
+        self._status_tick = False
 
         config = load_config()
 
@@ -44,64 +58,172 @@ class BridgeGui:
         self.xmrig_extra = tk.StringVar(value=config.get("xmrig_extra", ""))
         self.start_miner_with_bridge = tk.BooleanVar(value=config.get("start_miner_with_bridge", False))
 
+        self._configure_theme()
         self._build_layout()
         self._start_log_pump()
+        self._animate_status()
+
+    def _configure_theme(self):
+        style = ttk.Style(self.root)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+
+        style.configure("TFrame", background=self.BG)
+        style.configure("Card.TLabelframe", background=self.PANEL, foreground=self.FG, bordercolor=self.PANEL_ALT, borderwidth=1)
+        style.configure("Card.TLabelframe.Label", background=self.PANEL, foreground=self.FG)
+        style.configure("TLabel", background=self.BG, foreground=self.FG)
+        style.configure("Muted.TLabel", background=self.BG, foreground=self.MUTED)
+        style.configure("Field.TEntry", fieldbackground=self.PANEL_ALT, foreground=self.FG, insertcolor=self.FG)
+        style.configure("Accent.TButton", background=self.ACCENT, foreground="#0a0c10", padding=(10, 6))
+        style.map("Accent.TButton", background=[("active", "#7cbcff")])
+        style.configure("TCheckbutton", background=self.PANEL, foreground=self.FG)
+        style.map("TCheckbutton", background=[("active", self.PANEL)])
 
     def _build_layout(self):
-        frame = tk.Frame(self.root, padx=10, pady=10)
-        frame.pack(fill=tk.BOTH, expand=True)
+        container = tk.Frame(self.root, bg=self.BG, padx=16, pady=14)
+        container.pack(fill=tk.BOTH, expand=True)
+
+        header = tk.Frame(container, bg=self.BG)
+        header.pack(fill=tk.X, pady=(0, 10))
+
+        title = tk.Label(header, text="LMT Miner Control Center", bg=self.BG, fg=self.FG, font=("Segoe UI", 18, "bold"))
+        title.pack(side=tk.LEFT)
+
+        self.status_label = tk.Label(
+            header,
+            text="● IDLE",
+            bg=self.BG,
+            fg=self.MUTED,
+            font=("Segoe UI", 11, "bold"),
+            padx=8,
+            pady=2,
+        )
+        self.status_label.pack(side=tk.RIGHT)
+
+        subtitle = tk.Label(
+            container,
+            text="Bridge + XMRig launcher for LMT native stratum",
+            bg=self.BG,
+            fg=self.MUTED,
+            font=("Segoe UI", 10),
+        )
+        subtitle.pack(fill=tk.X, pady=(0, 10))
+
+        content = tk.Frame(container, bg=self.BG)
+        content.pack(fill=tk.BOTH, expand=True)
+
+        form_col = tk.Frame(content, bg=self.BG)
+        form_col.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 8))
+
+        log_col = tk.Frame(content, bg=self.BG)
+        log_col.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(8, 0))
+
+        bridge_card = ttk.LabelFrame(form_col, text="Bridge settings", style="Card.TLabelframe", padding=10)
+        bridge_card.pack(fill=tk.X, pady=(0, 8))
 
         row = 0
-        self._add_row(frame, row, "Bridge binary", self.bridge_path, browse=True)
+        self._add_row(bridge_card, row, "Bridge binary", self.bridge_path, browse=True)
         row += 1
-        self._add_row(frame, row, "Listen", self.listen)
+        self._add_row(bridge_card, row, "Listen", self.listen)
         row += 1
-        self._add_row(frame, row, "RPC URL", self.rpc_url)
+        self._add_row(bridge_card, row, "RPC URL", self.rpc_url)
         row += 1
-        self._add_row(frame, row, "Pay address", self.pay_address)
+        self._add_row(bridge_card, row, "Pay address", self.pay_address)
         row += 1
-        self._add_row(frame, row, "Extra data (hex)", self.extra_data_hex)
+        self._add_row(bridge_card, row, "Extra data (hex)", self.extra_data_hex)
         row += 1
-        self._add_row(frame, row, "Refresh ms", self.refresh_ms)
+        self._add_row(bridge_card, row, "Refresh ms", self.refresh_ms)
         row += 1
 
-        checkbox = tk.Checkbutton(frame, text="Allow non-DAA blocks", variable=self.allow_non_daa)
+        checkbox = ttk.Checkbutton(bridge_card, text="Allow non-DAA blocks", variable=self.allow_non_daa)
         checkbox.grid(row=row, column=0, columnspan=3, sticky="w", pady=(2, 8))
-        row += 1
+        bridge_card.columnconfigure(1, weight=1)
 
-        tk.Label(frame, text="XMRig (fork) settings").grid(row=row, column=0, columnspan=3, sticky="w", pady=(8, 2))
+        miner_card = ttk.LabelFrame(form_col, text="XMRig (fork) settings", style="Card.TLabelframe", padding=10)
+        miner_card.pack(fill=tk.X, pady=(0, 8))
+
+        row = 0
+        self._add_row(miner_card, row, "XMRig binary", self.xmrig_path, browse=True, browse_target="xmrig")
         row += 1
-        self._add_row(frame, row, "XMRig binary", self.xmrig_path, browse=True, browse_target="xmrig")
+        self._add_row(miner_card, row, "XMRig URL", self.xmrig_url)
         row += 1
-        self._add_row(frame, row, "XMRig URL", self.xmrig_url)
+        self._add_row(miner_card, row, "XMRig extra args", self.xmrig_extra)
         row += 1
-        self._add_row(frame, row, "XMRig extra args", self.xmrig_extra)
-        row += 1
-        miner_checkbox = tk.Checkbutton(frame, text="Start miner with bridge", variable=self.start_miner_with_bridge)
+        miner_checkbox = ttk.Checkbutton(miner_card, text="Start miner with bridge", variable=self.start_miner_with_bridge)
         miner_checkbox.grid(row=row, column=0, columnspan=3, sticky="w", pady=(2, 8))
-        row += 1
+        miner_card.columnconfigure(1, weight=1)
 
-        btn_frame = tk.Frame(frame)
-        btn_frame.grid(row=row, column=0, columnspan=3, sticky="w")
-        tk.Button(btn_frame, text="Start", command=self.start_bridge).pack(side=tk.LEFT, padx=(0, 6))
-        tk.Button(btn_frame, text="Stop", command=self.stop_bridge).pack(side=tk.LEFT, padx=(0, 6))
-        tk.Button(btn_frame, text="Save", command=self.save_settings).pack(side=tk.LEFT)
-        row += 1
+        action_card = ttk.LabelFrame(form_col, text="Actions", style="Card.TLabelframe", padding=10)
+        action_card.pack(fill=tk.X, pady=(0, 8))
 
-        self.log = ScrolledText(frame, height=15, state=tk.DISABLED)
-        self.log.grid(row=row, column=0, columnspan=3, sticky="nsew", pady=(10, 0))
+        btn_frame = tk.Frame(action_card, bg=self.PANEL)
+        btn_frame.pack(fill=tk.X)
+        ttk.Button(btn_frame, text="Start", style="Accent.TButton", command=self.start_bridge).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(btn_frame, text="Stop", command=self.stop_bridge).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Button(btn_frame, text="Save", command=self.save_settings).pack(side=tk.LEFT)
 
-        frame.columnconfigure(1, weight=1)
-        frame.rowconfigure(row, weight=1)
+        note = ttk.Label(
+            action_card,
+            text="Tip: use a valid `lmt:` address to enable native LMT flow.",
+            style="Muted.TLabel",
+        )
+        note.pack(fill=tk.X, pady=(8, 0))
+
+        log_card = ttk.LabelFrame(log_col, text="Live Console", style="Card.TLabelframe", padding=10)
+        log_card.pack(fill=tk.BOTH, expand=True)
+
+        self.log = ScrolledText(
+            log_card,
+            height=20,
+            state=tk.DISABLED,
+            bg="#0d1017",
+            fg="#d3d8e3",
+            insertbackground="#d3d8e3",
+            relief=tk.FLAT,
+            borderwidth=0,
+            font=("Consolas", 10),
+        )
+        self.log.pack(fill=tk.BOTH, expand=True)
+        self.log.tag_configure("bridge", foreground="#7aa2ff")
+        self.log.tag_configure("miner", foreground="#6de29f")
+        self.log.tag_configure("system", foreground="#f3c767")
+
+        footer = tk.Frame(container, bg=self.BG)
+        footer.pack(fill=tk.X, pady=(8, 0))
+        ttk.Label(footer, text="LMT native stratum mode", style="Muted.TLabel").pack(side=tk.LEFT)
+        self.state_hint = ttk.Label(footer, text="Bridge stopped", style="Muted.TLabel")
+        self.state_hint.pack(side=tk.RIGHT)
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def _add_row(self, frame, row, label, variable, browse=False, browse_target="bridge"):
-        tk.Label(frame, text=label).grid(row=row, column=0, sticky="w", pady=2)
-        entry = tk.Entry(frame, textvariable=variable, width=60)
+        tk.Label(frame, text=label, bg=self.PANEL, fg=self.FG, font=("Segoe UI", 9)).grid(row=row, column=0, sticky="w", pady=3)
+        entry = tk.Entry(
+            frame,
+            textvariable=variable,
+            width=62,
+            bg=self.PANEL_ALT,
+            fg=self.FG,
+            insertbackground=self.FG,
+            relief=tk.FLAT,
+            borderwidth=6,
+        )
         entry.grid(row=row, column=1, sticky="ew", pady=2)
         if browse:
-            tk.Button(frame, text="Browse", command=lambda: self.browse_binary(browse_target)).grid(
+            tk.Button(
+                frame,
+                text="Browse",
+                command=lambda: self.browse_binary(browse_target),
+                bg=self.PANEL_ALT,
+                fg=self.FG,
+                relief=tk.FLAT,
+                padx=10,
+                pady=5,
+                activebackground="#2b3245",
+                activeforeground=self.FG,
+            ).grid(
                 row=row, column=2, sticky="w", padx=(6, 0)
             )
 
@@ -115,7 +237,12 @@ class BridgeGui:
 
     def append_log(self, text):
         self.log.configure(state=tk.NORMAL)
-        self.log.insert(tk.END, text + "\n")
+        tag = "system"
+        if text.startswith("[miner]"):
+            tag = "miner"
+        elif text.startswith("[bridge]"):
+            tag = "bridge"
+        self.log.insert(tk.END, text + "\n", tag)
         self.log.configure(state=tk.DISABLED)
         self.log.see(tk.END)
 
@@ -170,7 +297,8 @@ class BridgeGui:
             return
 
         threading.Thread(target=self._read_logs, daemon=True).start()
-        self.append_log("Bridge started.")
+        self.append_log("[bridge] Bridge started.")
+        self._set_status("running")
         if self.start_miner_with_bridge.get():
             self.start_miner()
 
@@ -178,24 +306,25 @@ class BridgeGui:
         if not self.process or not self.process.stdout:
             return
         for line in self.process.stdout:
-            self.log_queue.put(line.rstrip())
+            self.log_queue.put(f"[bridge] {line.rstrip()}")
 
     def stop_bridge(self):
         if not self.process:
             return
         self.process.terminate()
         self.process = None
-        self.append_log("Bridge stopped.")
+        self.append_log("[bridge] Bridge stopped.")
+        self._set_status("idle")
         if getattr(self, "miner_process", None):
             self.stop_miner()
 
     def start_miner(self):
         if getattr(self, "miner_process", None):
-            self.append_log("Miner already running.")
+            self.append_log("[system] Miner already running.")
             return
         xmrig_path = self.xmrig_path.get().strip()
         if not xmrig_path:
-            self.append_log("XMRig path not set; skipping miner start.")
+            self.append_log("[system] XMRig path not set; skipping miner start.")
             return
         url = self.xmrig_url.get().strip()
         address = self.pay_address.get().strip()
@@ -212,11 +341,11 @@ class BridgeGui:
                 bufsize=1,
             )
         except OSError as exc:
-            self.append_log(f"Failed to start miner: {exc}")
+            self.append_log(f"[system] Failed to start miner: {exc}")
             self.miner_process = None
             return
         threading.Thread(target=self._read_miner_logs, daemon=True).start()
-        self.append_log("Miner started.")
+        self.append_log("[miner] Miner started.")
 
     def _read_miner_logs(self):
         proc = getattr(self, "miner_process", None)
@@ -231,7 +360,7 @@ class BridgeGui:
             return
         proc.terminate()
         self.miner_process = None
-        self.append_log("Miner stopped.")
+        self.append_log("[miner] Miner stopped.")
 
     def save_settings(self):
         data = {
@@ -248,7 +377,23 @@ class BridgeGui:
             "start_miner_with_bridge": self.start_miner_with_bridge.get(),
         }
         save_config(data)
-        self.append_log("Settings saved.")
+        self.append_log("[system] Settings saved.")
+
+    def _set_status(self, status):
+        if status == "running":
+            self.status_label.configure(text="● RUNNING", fg=self.SUCCESS)
+            self.state_hint.configure(text="Bridge running")
+        else:
+            self.status_label.configure(text="● IDLE", fg=self.MUTED)
+            self.state_hint.configure(text="Bridge stopped")
+
+    def _animate_status(self):
+        # Lightweight UI pulse animation for status indicator.
+        if self.process:
+            self._status_tick = not self._status_tick
+            color = self.SUCCESS if self._status_tick else "#6de6a0"
+            self.status_label.configure(fg=color)
+        self.root.after(600, self._animate_status)
 
     def on_close(self):
         if self.process:

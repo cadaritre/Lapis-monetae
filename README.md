@@ -5,7 +5,7 @@ Lapis Monetae (LMT) is a Rust-based full node derived from the Kaspa codebase, a
 ## Consensus & Roadmap
 - Supply and Emission: Adjusted to a target of 100,000,000 LMT over ~8 years.
 - Consensus: PoW-first with planned PoA (Proof of Authority) augmentation for governance and anchoring.
-- Mining: RandomX PoW is active; stratum/pool tooling is external.
+- Mining: RandomX PoW is active; LMT-native stratum tooling is integrated under `tools/xmrig-lmt`.
 - Platform Integration: Planned integration with the "Lapis Mens" platform for ecosystem services.
 
 ## Addresses & Networks
@@ -80,13 +80,48 @@ cargo run --release --bin lmtd -- --help
 ```
 
 ## Mining (solo/local)
-LMT miners must solve templates from the node RPC (`get_block_template`) and submit via `submit_block`.
-This repo does not ship a stratum server or pool; for local testing use RPC directly or a custom bridge.
+LMT mining flow uses `get_block_template` and `submit_block` from node RPC, with an LMT-native Stratum bridge and XMRig fork in this repository:
 
-Run a local node and allow unsynced mining for tests:
-```bash
-cargo run --release --bin lmtd -- --enable-unsynced-mining
+- `tools/xmrig-lmt/bridge/` - LMT Stratum bridge
+- `tools/xmrig-lmt/protocol/lmt-stratum.md` - native job protocol (`mining.subscribe`, `mining.authorize`, `mining.notify`, `mining.submit`)
+- `tools/xmrig-lmt/xmrig-fork/` - XMRig fork adapted for LMT-native jobs
+- `tools/xmrig-lmt/gui/` - Python Tkinter launcher for bridge + miner
+
+### Quickstart (Windows)
+1) Start node (test mode flags are acceptable for local validation):
+```powershell
+cargo run --release --bin lmtd -- --utxoindex --enable-unsynced-mining
 ```
+
+2) Build bridge:
+```powershell
+cd tools\xmrig-lmt\bridge
+cargo build --release
+```
+
+3) Build XMRig fork:
+```powershell
+cd ..\xmrig-fork
+mkdir build
+cd build
+cmake ..
+cmake --build . --config Release
+```
+
+4) Run GUI and start both bridge and miner:
+```powershell
+cd ..\..\gui
+python app.py
+```
+
+5) In GUI:
+- Bridge binary: `tools\xmrig-lmt\bridge\target\release\lmt-stratum-bridge.exe`
+- XMRig binary: `tools\xmrig-lmt\xmrig-fork\build\Release\xmrig.exe` (path may vary by generator)
+- RPC URL: `grpc://127.0.0.1:26110`
+- XMRig URL: `stratum+tcp://127.0.0.1:3333`
+- Pay address: `lmt:...`
+
+Protocol note: LMT notify includes `target64_hex` and uses subscribe/authorize handshake (see `tools/xmrig-lmt/protocol/lmt-stratum.md`).
 
 ## wRPC
 wRPC is optional and can be enabled via:
