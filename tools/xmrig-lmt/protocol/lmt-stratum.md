@@ -42,7 +42,7 @@ Notification (server -> miner):
   "pre_pow_hash_hex",
   1769947200000,
   "bits_hex",
-  "target_hex"
+  "target64_hex"
 ]}
 ```
 
@@ -51,7 +51,7 @@ Fields:
 - `pre_pow_hash_hex`: header hash with nonce=0 and timestamp=0.
 - `timestamp`: milliseconds (from template header).
 - `bits_hex`: compact target bits (hex string).
-- `target_hex`: full target (hex string, little-endian).
+- `target64_hex`: 64-bit target threshold used by XMRig share checks.
 
 ### mining.submit
 Request:

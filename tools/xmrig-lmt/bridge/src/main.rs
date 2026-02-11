@@ -206,7 +206,8 @@ async fn fetch_template(
     let pre_pow_hash = hashing::header::hash_override_nonce_time(&header, 0, 0);
     let bits_hex = format!("0x{:08x}", block.header.bits);
     let target = Uint256::from_compact_target_bits(block.header.bits);
-    let target_hex = target.to_le_bytes().to_vec().to_hex();
+    let target_le = target.to_le_bytes();
+    let target_hex = target_le[24..32].to_vec().to_hex();
     *job_counter += 1;
     Ok(Template {
         job_id: *job_counter,
@@ -281,6 +282,6 @@ fn parse_submit(params: Value) -> Result<SubmitParams, Box<dyn std::error::Error
     let nonce_str = params[2].as_str().ok_or("nonce missing")?;
     let nonce_str = nonce_str.trim_start_matches("0x");
     let nonce = u64::from_str_radix(nonce_str, 16)?;
-    let timestamp = params.get(3).and_then(|v| v.as_u64());
+    let timestamp = params.get(3).and_then(|v| v.as_u64()).filter(|ts| *ts > 0);
     Ok(SubmitParams { job_id, nonce, timestamp })
 }

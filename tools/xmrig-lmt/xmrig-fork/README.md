@@ -1,13 +1,22 @@
-## XMRig LMT fork (scaffold)
+## XMRig LMT fork
 
-Place the upstream XMRig source here and apply the LMT job protocol changes.
+This fork is wired for LMT-native stratum jobs served by `tools/xmrig-lmt/bridge`.
 
-Recommended workflow:
-1. Clone XMRig into this directory.
-2. Apply LMT patches (to be created under `patches/`).
-3. Build and test against the local bridge.
+### LMT-specific behavior
+- Detects LMT mode automatically when user starts with `lmt:`.
+- Uses `mining.subscribe` + `mining.authorize`.
+- Parses `mining.notify` array payload from `tools/xmrig-lmt/protocol/lmt-stratum.md`.
+- Builds RandomX input from a 48-byte blob:
+  - bytes `[0..31]`: `pre_pow_hash`
+  - bytes `[32..39]`: `timestamp` (LE)
+  - bytes `[40..47]`: nonce area (mutated by miner)
+- Submits shares with `mining.submit`.
 
-This fork will implement:
-- LMT-native job parsing for `mining.notify`
-- RandomX input based on `pre_pow_hash + timestamp + nonce`
-- `mining.submit` payload compatible with the bridge
+### Build (Windows)
+Use the regular XMRig build flow (`cmake` + `cmake --build`) from this directory.
+
+### Run against the bridge
+Example:
+```bash
+xmrig.exe -o stratum+tcp://127.0.0.1:3333 -u lmt:YOUR_ADDRESS -p x
+```
