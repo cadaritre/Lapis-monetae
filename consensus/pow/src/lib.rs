@@ -49,10 +49,7 @@ impl State {
     #[must_use]
     pub fn calculate_pow(&self, nonce: u64) -> Uint256 {
         let input = build_randomx_input(self.pre_pow_hash, self.timestamp, nonce);
-        let hash_bytes = self
-            .vm
-            .calculate_hash(&input)
-            .expect("RandomX PoW hash calculation failed");
+        let hash_bytes = self.vm.calculate_hash(&input).expect("RandomX PoW hash calculation failed");
         let hash = Hash::from_slice(&hash_bytes);
         Uint256::from_le_bytes(hash.as_bytes())
     }
