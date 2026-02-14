@@ -16,6 +16,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 cfg-if.workspace = true
+getrandom_0_3.workspace = true
 js-sys.workspace = true
 kaspa-addresses.workspace = true
 kaspa-bip32.workspace = true

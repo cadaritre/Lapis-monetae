@@ -487,7 +487,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     // connect_peers means no DNS seeding and no outbound/inbound peers
     let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
     let inbound_limit = if connect_peers.is_empty() { args.inbound_limit } else { 0 };
-    let dns_seeders = if connect_peers.is_empty() && (args.enable_dns_seeding || !args.disable_dns_seeding) { config.dns_seeders } else { &[] };
+    let dns_seeders: &'static [&'static str] =
+        if connect_peers.is_empty() && (args.enable_dns_seeding || !args.disable_dns_seeding) { config.dns_seeders } else { &[] };
 
     let grpc_server_addr = args.rpclisten.unwrap_or(ContextualNetAddress::loopback()).normalize(config.default_rpc_port());
 

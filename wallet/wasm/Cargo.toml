@@ -17,6 +17,7 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 async-trait.workspace = true
+getrandom_0_3.workspace = true
 js-sys.workspace = true
 kaspa-cli.workspace = true
 wasm-bindgen-futures.workspace = true

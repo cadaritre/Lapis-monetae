@@ -102,12 +102,10 @@ impl CoinbaseManager {
         let scaled_pre_deflationary_base = pre_deflationary_phase_base_subsidy.div_ceil(emission_divisor);
 
         // Here values are rounded up so that we keep the same number of rewarding months
-        let subsidy_by_month_table_before: SubsidyByMonthTable = core::array::from_fn(|i| {
-            (SUBSIDY_BY_MONTH_TABLE[i].div_ceil(emission_divisor)).div_ceil(bps.before())
-        });
-        let subsidy_by_month_table_after: SubsidyByMonthTable = core::array::from_fn(|i| {
-            (SUBSIDY_BY_MONTH_TABLE[i].div_ceil(emission_divisor)).div_ceil(bps.after())
-        });
+        let subsidy_by_month_table_before: SubsidyByMonthTable =
+            core::array::from_fn(|i| (SUBSIDY_BY_MONTH_TABLE[i].div_ceil(emission_divisor)).div_ceil(bps.before()));
+        let subsidy_by_month_table_after: SubsidyByMonthTable =
+            core::array::from_fn(|i| (SUBSIDY_BY_MONTH_TABLE[i].div_ceil(emission_divisor)).div_ceil(bps.after()));
 
         Self {
             coinbase_payload_script_public_key_max_len,
