@@ -346,7 +346,11 @@ mod tests {
         let pre_deflation_total: u128 = (pre_deflationary_phase_base_subsidy as u128) * (deflationary_phase_daa_score as u128);
         let deflation_total: u128 = SUBSIDY_BY_MONTH_TABLE.iter().map(|v| (*v as u128) * (SECONDS_PER_MONTH as u128)).sum();
         let scheduled_total: u128 = pre_deflation_total + deflation_total;
-        if scheduled_total <= target_total_sompi { 1 } else { scheduled_total.div_ceil(target_total_sompi) as u64 }
+        if scheduled_total <= target_total_sompi {
+            1
+        } else {
+            scheduled_total.div_ceil(target_total_sompi) as u64
+        }
     }
 
     #[test]
