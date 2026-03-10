@@ -567,7 +567,7 @@ mod tests {
     fn test_exceed_max_script_size() {
         fn full_builder() -> ScriptBuilder {
             let mut builder = ScriptBuilder::new();
-            builder.add_data_unchecked(&[0u8; MAX_SCRIPTS_SIZE - 3]);
+            builder.add_data_unchecked([0u8; MAX_SCRIPTS_SIZE - 3].as_slice());
             builder
         }
         // Start off by constructing a max size script.
@@ -576,7 +576,7 @@ mod tests {
 
         // Ensure adding data that would exceed the maximum size of the script
         // does not add the data.
-        let result = builder.add_data(&[0u8]).map(|_| ());
+        let result = builder.add_data([0u8].as_slice()).map(|_| ());
         assert_eq!(
             result,
             Err(ScriptBuilderError::DataRejected(1)),
@@ -596,7 +596,7 @@ mod tests {
 
         // Ensure adding an opcode array that would exceed the maximum size of the
         // script does not add the data.
-        let result = builder.add_ops(&[OpCheckSig]).map(|_| ());
+        let result = builder.add_ops([OpCheckSig].as_slice()).map(|_| ());
         assert_eq!(
             result,
             Err(ScriptBuilderError::OpCodesRejected(1)),
