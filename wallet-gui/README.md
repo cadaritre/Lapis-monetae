@@ -19,6 +19,12 @@ This GUI wraps the existing project CLI (`kaspa-cli` / `lmt-cli`) and does not r
   - strict network-aware address prefix validation (`lmt:` vs `lmttest:`)
   - account suggestion refresh for transfer targets
   - persisted last wallet for faster reopen
+- Phase 3 enhancements:
+  - wallet-open verification flow before enabling send/transfer
+  - node status strip (connected/disconnected/syncing)
+  - friendly CLI error mapping for user toasts
+  - transactions tab from `history list`
+  - contacts/address-book modal with send quick-select
 - Interactive CLI commands open in a separate console for secure secret prompts
 
 ## Folder Structure
@@ -30,6 +36,8 @@ This GUI wraps the existing project CLI (`kaspa-cli` / `lmt-cli`) and does not r
 - `wallet_app/cli_bridge.py` - command execution helpers
 - `wallet_app/ui_components.py` - reusable UI components
 - `wallet_app/app.py` - GUI and feature logic
+- `wallet_app/tx_history.py` - transactions tab parser/panel
+- `wallet_app/contacts.py` - contacts model and config integration
 
 ## Requirements
 
@@ -69,7 +77,8 @@ start-wallet-gui.bat
    - **New Address**
    - **Send LMT**
    - **Transfer Between Accounts**
-   - **Refresh Account Suggestions**
+   - **Tx History**
+   - **Contacts**
    - **Open Last Wallet**
 
 ## Notes

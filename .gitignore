@@ -31,6 +31,8 @@ pids
 *.pid
 *.seed
 *.pid.lock
+*.err
+*.out
 
 # Coverage directory used by tools like istanbul
 coverage/
@@ -81,3 +83,12 @@ agent-rules.local.md
 # Python cache artifacts
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Wallet GUI generated config/state
+wallet-gui/.wallet_gui_config.json
+**/.wallet_gui_config.json

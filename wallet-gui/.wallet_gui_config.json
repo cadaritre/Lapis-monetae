@@ -1,5 +1,6 @@
 {
-  "cli_path": "",
+  "cli_path": "C:/Users/Cadaritre/Documents/LAPIS MONETAE/target/release/kaspa-wallet.exe",
   "network": "mainnet",
-  "last_wallet": ""
+  "last_wallet": "",
+  "contacts": []
 }

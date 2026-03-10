@@ -19,6 +19,9 @@ class WalletState:
     wallet_name: str = ""
     network: str = DEFAULT_NETWORK
     busy: bool = False
+    node_connected: bool = False
+    node_synced: bool | None = None
+    pending_wallet_open: bool = False
 
     _listeners: list[Callable[[], None]] = field(default_factory=list, repr=False)
 
@@ -38,11 +41,18 @@ class WalletState:
     def open_wallet(self, name: str) -> None:
         self.wallet_open = True
         self.wallet_name = name
+        self.pending_wallet_open = False
+        self._notify()
+
+    def set_wallet_open_pending(self, name: str) -> None:
+        self.wallet_name = name
+        self.pending_wallet_open = True
         self._notify()
 
     def close_wallet(self) -> None:
         self.wallet_open = False
         self.wallet_name = ""
+        self.pending_wallet_open = False
         self._notify()
 
     def set_network(self, network: str) -> None:
@@ -51,6 +61,11 @@ class WalletState:
 
     def set_busy(self, busy: bool) -> None:
         self.busy = busy
+        self._notify()
+
+    def set_node_status(self, connected: bool, synced: bool | None) -> None:
+        self.node_connected = connected
+        self.node_synced = synced
         self._notify()
 
     # ── Gate checks ──
@@ -73,6 +88,8 @@ class WalletState:
         if not ok:
             return ok, reason
         if not self.wallet_open:
+            if self.pending_wallet_open:
+                return False, "Wallet open is pending verification"
             return False, "Open a wallet before sending"
         return True, ""
 
@@ -87,6 +104,13 @@ class WalletState:
             parts.append(f"Wallet: {self.wallet_name}")
         else:
             parts.append("Wallet: none")
+        if self.node_connected:
+            if self.node_synced is None:
+                parts.append("Node: connected")
+            else:
+                parts.append("Node: synced" if self.node_synced else "Node: syncing")
+        else:
+            parts.append("Node: disconnected")
         return "  \u2502  ".join(parts)
 
     def pill_info(self) -> tuple[str, str, str]:
@@ -95,6 +119,8 @@ class WalletState:
             return " \u25CF  RUNNING\u2026 ", "#fef3c7", "#d97706"
         if not self.cli_available:
             return " \u25CF  CLI MISSING ", "#fee2e2", "#dc2626"
+        if self.pending_wallet_open:
+            return " \u25CF  OPEN VERIFY ", "#fef3c7", "#d97706"
         if self.wallet_open:
             return " \u25CF  WALLET OPEN ", "#dcfce7", "#16a34a"
         return " \u25CF  READY ", "#dbeafe", "#2563eb"

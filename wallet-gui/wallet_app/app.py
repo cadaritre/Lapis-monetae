@@ -8,10 +8,18 @@ from pathlib import Path
 from typing import Any, Callable
 from tkinter import filedialog, ttk
 
-from .cli_bridge import launch_interactive, run_capture
+from .cli_bridge import (
+    is_wallet_open_from_output,
+    launch_interactive,
+    map_cli_error,
+    parse_node_sync_hint,
+    run_capture,
+)
+from .contacts import Contact, load_contacts, save_contacts_to_config
 from .config import DEFAULT_NETWORK, NETWORK_CHOICES, load_config, save_config
 from .history import HistoryPanel, HistoryStore
 from .state import WalletState
+from .tx_history import TransactionsPanel, parse_history_output
 from .ui_components import AnimatedButton
 from .validators import parse_nonnegative_fee, parse_positive_amount, validate_address
 
@@ -35,6 +43,12 @@ class WalletGui(tk.Tk):
     ERROR = "#dc2626"
     BORDER = "#dce1ea"
     GROUP_BG = "#f7f8fc"
+    MAX_WALLET_NAME = 64
+    MAX_CONTACT_NAME = 48
+    MAX_ADDRESS_TEXT = 120
+    MAX_NOTE_TEXT = 140
+    MAX_NUMERIC_TEXT = 24
+    MAX_ACCOUNT_TEXT = 64
 
     def __init__(self) -> None:
         super().__init__()
@@ -42,7 +56,10 @@ class WalletGui(tk.Tk):
         self.action_buttons: list[AnimatedButton] = []
         self.send_modal: tk.Toplevel | None = None
         self.transfer_modal: tk.Toplevel | None = None
+        self.contacts_modal: tk.Toplevel | None = None
         self.account_suggestions: list[str] = []
+        self.contacts: list[Contact] = load_contacts(self.config_data)
+        self.contact_choices_var = tk.StringVar()
 
         self.ws = WalletState(network=self.config_data.get("network", DEFAULT_NETWORK))
         self.ws.refresh_cli(self.config_data)
@@ -50,6 +67,7 @@ class WalletGui(tk.Tk):
 
         self.history_store = HistoryStore()
         self.history_panel: HistoryPanel | None = None
+        self.tx_panel: TransactionsPanel | None = None
 
         self.title("Lapis Monetae Wallet")
         self.geometry("1050x780")
@@ -63,6 +81,7 @@ class WalletGui(tk.Tk):
         self.history_store.add("system", "GUI started", "ok")
         if self.history_panel:
             self.history_panel.refresh()
+        self.after(2000, self._poll_node_status)
 
     # ── Window icon ──
 
@@ -176,17 +195,30 @@ class WalletGui(tk.Tk):
         tk.Label(wallet_frame, text="Wallet Name (optional)", bg=self.PANEL, fg=self.MUTED,
                  font=("Segoe UI", 9)).pack(anchor="w")
         self.wallet_name_var = tk.StringVar(value=self.config_data.get("last_wallet", ""))
-        tk.Entry(wallet_frame, textvariable=self.wallet_name_var, bg=self.INPUT_BG, fg=self.FG,
-                 insertbackground=self.FG, relief="flat", font=("Segoe UI", 9),
-                 highlightthickness=1, highlightcolor=self.BLUE,
-                 highlightbackground=self.BORDER).pack(fill="x", ipady=5)
+        wallet_name_entry = tk.Entry(
+            wallet_frame,
+            textvariable=self.wallet_name_var,
+            bg=self.INPUT_BG,
+            fg=self.FG,
+            insertbackground=self.FG,
+            relief="flat",
+            font=("Segoe UI", 9),
+            highlightthickness=1,
+            highlightcolor=self.BLUE,
+            highlightbackground=self.BORDER,
+        )
+        self._bind_max_length(wallet_name_entry, self.MAX_WALLET_NAME)
+        wallet_name_entry.pack(fill="x", ipady=5)
 
     def _build_status_row(self, parent: tk.Frame) -> None:
         self.status_var = tk.StringVar()
+        self.node_status_var = tk.StringVar(value="Node: unknown")
         row = tk.Frame(parent, bg=self.BG)
         row.pack(fill="x", pady=(4, 4))
         tk.Label(row, textvariable=self.status_var, bg=self.BG, fg=self.MUTED,
                  font=("Consolas", 8)).pack(side="left")
+        tk.Label(row, textvariable=self.node_status_var, bg=self.BG, fg=self.MUTED,
+                 font=("Consolas", 8)).pack(side="right")
 
     def _build_action_buttons(self, parent: tk.Frame) -> None:
         actions_panel = tk.Frame(parent, bg=self.PANEL, padx=10, pady=8,
@@ -208,7 +240,8 @@ class WalletGui(tk.Tk):
         self._build_button_row(actions_panel, "\u26A1 Transactions", self.ORANGE, [
             ("\u27A4 Send", self.open_send_modal, "#d97706"),
             ("\u21C4 Transfer", self.open_transfer_modal, "#ea580c"),
-            ("\u21BB Refresh", self.refresh_account_suggestions, "#ca8a04"),
+            ("\u2630 Tx History", self.refresh_transactions, "#ca8a04"),
+            ("\u260E Contacts", self.open_contacts_modal, "#7c3aed"),
             ("\u2715 Clear", self.clear_output, "#9333ea"),
         ])
 
@@ -259,6 +292,11 @@ class WalletGui(tk.Tk):
         self.history_panel = HistoryPanel(history_frame, self.history_store)
         notebook.add(history_frame, text=" \u2637  History ")
 
+        # ── Tab 3: Transactions ──
+        tx_frame = tk.Frame(notebook, bg=self.BG)
+        self.tx_panel = TransactionsPanel(tx_frame)
+        notebook.add(tx_frame, text=" \u27A6  Transactions ")
+
     # ── Widget helpers ──
 
     def _draw_gradient_line(self, canvas: tk.Canvas, width: int) -> None:
@@ -303,6 +341,14 @@ class WalletGui(tk.Tk):
 
     def _sync_ui_to_state(self) -> None:
         self.status_var.set(f"\u25B8 {self.ws.status_text()}")
+        if not self.ws.node_connected:
+            self.node_status_var.set("Node: disconnected")
+        elif self.ws.node_synced is None:
+            self.node_status_var.set("Node: connected")
+        elif self.ws.node_synced:
+            self.node_status_var.set("Node: synced")
+        else:
+            self.node_status_var.set("Node: syncing")
         text, bg, fg = self.ws.pill_info()
         self.pill_status.config(text=text, bg=bg, fg=fg)
         btn_state = "disabled" if self.ws.busy else "normal"
@@ -330,7 +376,10 @@ class WalletGui(tk.Tk):
     # ── CLI configuration ──
 
     def on_browse_cli(self) -> None:
-        path = filedialog.askopenfilename(title="Select CLI binary")
+        path = filedialog.askopenfilename(
+            title="Select CLI executable",
+            filetypes=[("Executable files", "*.exe")],
+        )
         if path:
             self.cli_path_var.set(path)
 
@@ -347,6 +396,10 @@ class WalletGui(tk.Tk):
         if not normalized:
             return
         self.config_data["last_wallet"] = normalized
+        save_config(self.config_data)
+
+    def _save_contacts(self) -> None:
+        save_contacts_to_config(self.config_data, self.contacts)
         save_config(self.config_data)
 
     def on_network_change(self) -> None:
@@ -377,7 +430,12 @@ class WalletGui(tk.Tk):
         self.history_panel and self.history_panel.add_and_refresh(category, description, "pending")  # type: ignore[arg-type]
         self.run_capture_action(args, ensure_network=ensure_network)
 
-    def run_capture_action(self, args: list[str], ensure_network: bool = False) -> None:
+    def run_capture_action(
+        self,
+        args: list[str],
+        ensure_network: bool = False,
+        on_complete: Callable[[int, str], None] | None = None,
+    ) -> None:
         binary = self._require_cli()
         if not binary:
             return
@@ -395,8 +453,13 @@ class WalletGui(tk.Tk):
             self.after(0, lambda: self.log(out))
             self.after(0, lambda: self.log(f"Exit code: {code}\n"))
             status = "ok" if code == 0 else "error"
-            self.after(0, lambda: self.toast("Command completed", status))
-            self.after(0, lambda: self._finish_action(status, f"Exit code: {code}"))
+            friendly = map_cli_error(code, out)
+            toast_msg = "Command completed" if code == 0 else friendly
+            self.after(0, lambda: self.toast(toast_msg, status))
+            if on_complete:
+                self.after(0, lambda: on_complete(code, out))
+            detail = f"Exit code: {code}" if code == 0 else f"{friendly} (exit code: {code})"
+            self.after(0, lambda: self._finish_action(status, detail))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -426,6 +489,10 @@ class WalletGui(tk.Tk):
         self.history_panel and self.history_panel.add_and_refresh(
             category, description, status, message,  # type: ignore[arg-type]
         )
+        if launched and len(args) >= 2 and args[0] == "wallet" and args[1] == "open":
+            target_name = args[2] if len(args) >= 3 else self._wallet_name()
+            self.ws.set_wallet_open_pending(target_name)
+            self._verify_wallet_open_async(target_name)
 
     # ── Wallet actions ──
 
@@ -454,7 +521,6 @@ class WalletGui(tk.Tk):
         if name:
             args.append(name)
             self._save_last_wallet(name)
-            self.ws.open_wallet(name)
         self.run_interactive_action(args, "wallet", f"Open wallet{f' ({name})' if name else ''}")
 
     def action_open_last_wallet(self) -> None:
@@ -463,12 +529,60 @@ class WalletGui(tk.Tk):
             self.toast("No last wallet is saved yet", "info")
             return
         self.wallet_name_var.set(last_wallet)
-        self.ws.open_wallet(last_wallet)
         self.run_interactive_action(["wallet", "open", last_wallet], "wallet",
                                     f"Open last wallet ({last_wallet})")
 
     def action_list_balances(self) -> None:
         self._guarded_capture(["list"], "wallet", "List account balances", ensure_network=True)
+
+    def _verify_wallet_open_async(self, wallet_name: str) -> None:
+        binary = self._require_cli()
+        if not binary:
+            self.ws.close_wallet()
+            return
+
+        def worker() -> None:
+            verified = False
+            for _ in range(6):
+                code, out = run_capture(binary, ["list"])
+                if is_wallet_open_from_output(code, out):
+                    verified = True
+                    break
+                # wait in main loop, not busy wait
+                event = threading.Event()
+                event.wait(2.0)
+            if verified:
+                self.after(0, lambda: self.ws.open_wallet(wallet_name))
+                self.after(0, lambda: self.toast(f"Wallet '{wallet_name or 'default'}' verified open", "ok"))
+                self.after(0, lambda: self.history_panel and self.history_panel.add_and_refresh("wallet", "Wallet open verified", "ok"))
+            else:
+                self.after(0, self.ws.close_wallet)
+                self.after(0, lambda: self.toast("Wallet open could not be verified yet", "warn"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _poll_node_status(self) -> None:
+        self.ws.refresh_cli(self.config_data)
+        binary = self.ws.cli_binary
+        if not binary or self.ws.busy:
+            self.after(12000, self._poll_node_status)
+            return
+
+        def worker() -> None:
+            ping_code, ping_out = run_capture(binary, ["ping"])
+            if ping_code != 0:
+                self.after(0, lambda: self.ws.set_node_status(False, None))
+                self.after(12000, self._poll_node_status)
+                return
+            list_code, list_out = run_capture(binary, ["list"])
+            if list_code == 0:
+                connected, synced = parse_node_sync_hint(list_out)
+            else:
+                connected, synced = True, None
+            self.after(0, lambda: self.ws.set_node_status(connected, synced))
+            self.after(12000, self._poll_node_status)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     # ── Send modal ──
 
@@ -481,6 +595,8 @@ class WalletGui(tk.Tk):
             self.send_modal.focus_force()
             return
         modal = self._create_modal("\u27A4  Send LMT", accent=self.ORANGE)
+        modal.geometry("620x500")
+        modal.minsize(560, 420)
         self.send_modal = modal
         content = tk.Frame(modal, bg=self.PANEL, padx=20, pady=14)
         content.pack(fill="both", expand=True)
@@ -488,12 +604,25 @@ class WalletGui(tk.Tk):
         recipient_var = tk.StringVar()
         amount_var = tk.StringVar()
         fee_var = tk.StringVar(value="0")
-        self._labeled_entry(content, 0, "Recipient address", recipient_var)
-        self._labeled_entry(content, 1, "Amount (LMT)", amount_var)
-        self._labeled_entry(content, 2, "Priority fee (LMT, optional)", fee_var)
+        contact_choice_var = tk.StringVar()
+        contact_values = self._contact_display_values()
+        row = 0
+        if contact_values:
+            contact_combo = self._labeled_combo(content, row, "Saved contact (optional)", contact_choice_var, contact_values)
+            row += 1
+
+            def apply_contact(_event: tk.Event[tk.Misc]) -> None:
+                selected = contact_choice_var.get().strip()
+                if selected:
+                    recipient_var.set(self._resolve_contact_address(selected))
+
+            contact_combo.bind("<<ComboboxSelected>>", apply_contact)
+        self._labeled_entry(content, row, "Recipient address", recipient_var, self.MAX_ADDRESS_TEXT)
+        self._labeled_entry(content, row + 1, "Amount (LMT)", amount_var, self.MAX_NUMERIC_TEXT)
+        self._labeled_entry(content, row + 2, "Priority fee (LMT, optional)", fee_var, self.MAX_NUMERIC_TEXT)
 
         footer = tk.Frame(content, bg=self.PANEL)
-        footer.grid(row=3, column=0, sticky="ew", pady=(14, 0))
+        footer.grid(row=row + 3, column=0, sticky="ew", pady=(14, 0))
         footer.grid_columnconfigure(0, weight=1)
         footer.grid_columnconfigure(1, weight=1)
         AnimatedButton(footer, text="\u2715  Cancel", command=modal.destroy,
@@ -515,6 +644,8 @@ class WalletGui(tk.Tk):
             self.transfer_modal.focus_force()
             return
         modal = self._create_modal("\u21C4  Transfer Between Accounts", accent=self.BLUE)
+        modal.geometry("620x500")
+        modal.minsize(560, 420)
         self.transfer_modal = modal
         content = tk.Frame(modal, bg=self.PANEL, padx=20, pady=14)
         content.pack(fill="both", expand=True)
@@ -523,8 +654,8 @@ class WalletGui(tk.Tk):
         amount_var = tk.StringVar()
         fee_var = tk.StringVar(value="0")
         self._labeled_combo(content, 0, "Target account (name or id)", account_var, self.account_suggestions)
-        self._labeled_entry(content, 1, "Amount (LMT)", amount_var)
-        self._labeled_entry(content, 2, "Priority fee (LMT, optional)", fee_var)
+        self._labeled_entry(content, 1, "Amount (LMT)", amount_var, self.MAX_NUMERIC_TEXT)
+        self._labeled_entry(content, 2, "Priority fee (LMT, optional)", fee_var, self.MAX_NUMERIC_TEXT)
 
         footer = tk.Frame(content, bg=self.PANEL)
         footer.grid(row=3, column=0, sticky="ew", pady=(14, 0))
@@ -549,8 +680,9 @@ class WalletGui(tk.Tk):
         modal.configure(bg=self.BG)
         modal.transient(self)
         modal.grab_set()
-        modal.geometry("560x360")
-        modal.resizable(False, False)
+        modal.geometry("620x460")
+        modal.minsize(520, 360)
+        modal.resizable(True, True)
         tk.Frame(modal, bg=accent, height=4).pack(fill="x")
         title_frame = tk.Frame(modal, bg=self.PANEL, padx=20, pady=12)
         title_frame.pack(fill="x")
@@ -565,24 +697,48 @@ class WalletGui(tk.Tk):
         tk.Frame(modal, bg=self.BORDER, height=1).pack(fill="x")
         return modal
 
-    def _labeled_entry(self, parent: tk.Frame, row: int, label: str, variable: tk.StringVar) -> None:
+    def _labeled_entry(
+        self,
+        parent: tk.Frame,
+        row: int,
+        label: str,
+        variable: tk.StringVar,
+        max_length: int | None = None,
+    ) -> None:
         frame = tk.Frame(parent, bg=self.PANEL)
         frame.grid(row=row, column=0, sticky="ew", pady=5)
         tk.Label(frame, text=label, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 3))
-        tk.Entry(frame, textvariable=variable, bg=self.INPUT_BG, fg=self.FG,
-                 insertbackground=self.FG, relief="flat", font=("Consolas", 11),
-                 highlightthickness=1, highlightcolor=self.BLUE,
-                 highlightbackground=self.BORDER).pack(fill="x", ipady=7)
+        entry = tk.Entry(
+            frame,
+            textvariable=variable,
+            bg=self.INPUT_BG,
+            fg=self.FG,
+            insertbackground=self.FG,
+            relief="flat",
+            font=("Consolas", 11),
+            highlightthickness=1,
+            highlightcolor=self.BLUE,
+            highlightbackground=self.BORDER,
+        )
+        if max_length is not None:
+            self._bind_max_length(entry, max_length)
+        entry.pack(fill="x", ipady=7)
         parent.grid_columnconfigure(0, weight=1)
 
+    def _bind_max_length(self, entry: tk.Entry, max_length: int) -> None:
+        vcmd = (self.register(lambda proposed: len(proposed) <= max_length), "%P")
+        entry.configure(validate="key", validatecommand=vcmd)
+
     def _labeled_combo(self, parent: tk.Frame, row: int, label: str,
-                       variable: tk.StringVar, values: list[str]) -> None:
+                       variable: tk.StringVar, values: list[str]) -> ttk.Combobox:
         frame = tk.Frame(parent, bg=self.PANEL)
         frame.grid(row=row, column=0, sticky="ew", pady=6)
         tk.Label(frame, text=label, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 4))
-        ttk.Combobox(frame, textvariable=variable, values=values,
-                     style="Light.TCombobox").pack(fill="x", ipady=6)
+        combo = ttk.Combobox(frame, textvariable=variable, values=values,
+                             style="Light.TCombobox")
+        combo.pack(fill="x", ipady=6)
         parent.grid_columnconfigure(0, weight=1)
+        return combo
 
     # ── Submit handlers ──
 
@@ -619,6 +775,9 @@ class WalletGui(tk.Tk):
         if not account:
             self.toast("Target account is required", "error")
             return
+        if len(account) > self.MAX_ACCOUNT_TEXT:
+            self.toast(f"Target account is too long (max {self.MAX_ACCOUNT_TEXT} chars)", "error")
+            return
         parsed_amount = parse_positive_amount(amount)
         if parsed_amount is None:
             self.toast("Amount must be a positive number", "error")
@@ -643,7 +802,8 @@ class WalletGui(tk.Tk):
 
     def _confirm_action(self, title: str, lines: list[str], on_confirm: Callable[[], None]) -> None:
         modal = self._create_modal(title, accent=self.ORANGE)
-        modal.geometry("560x300")
+        modal.geometry("620x380")
+        modal.minsize(560, 320)
         container = tk.Frame(modal, bg=self.PANEL, padx=20, pady=14)
         container.pack(fill="both", expand=True)
         for line in lines:
@@ -717,6 +877,110 @@ class WalletGui(tk.Tk):
             self.after(0, apply_results)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    # ── Transactions tab refresh ──
+
+    def refresh_transactions(self) -> None:
+        ok, reason = self.ws.can_run_action()
+        if not ok:
+            self.toast(reason, "info")
+            return
+        self.history_panel and self.history_panel.add_and_refresh("wallet", "Refresh transactions", "pending")  # type: ignore[arg-type]
+
+        def on_history_complete(code: int, out: str) -> None:
+            if not self.tx_panel:
+                return
+            rows = parse_history_output(out) if code == 0 else []
+            self.tx_panel.set_rows(rows)
+            if code == 0 and rows:
+                self.toast(f"Loaded {len(rows)} transaction rows", "ok")
+            elif code == 0:
+                self.toast("No transactions parsed. Try using wallet history first.", "info")
+
+        self.run_capture_action(["history", "list", "30"], ensure_network=True, on_complete=on_history_complete)
+
+    # ── Contacts / address book ──
+
+    def _contact_display_values(self) -> list[str]:
+        return [f"{c.name} ({c.address[:20]}...)" for c in self.contacts]
+
+    def _resolve_contact_address(self, selected: str) -> str:
+        for contact in self.contacts:
+            label = f"{contact.name} ({contact.address[:20]}...)"
+            if selected == label:
+                return contact.address
+        return selected
+
+    def open_contacts_modal(self) -> None:
+        if self.contacts_modal and self.contacts_modal.winfo_exists():
+            self.contacts_modal.focus_force()
+            return
+        modal = self._create_modal("\u260E  Manage Contacts", accent="#7c3aed")
+        modal.geometry("760x620")
+        modal.minsize(640, 500)
+        self.contacts_modal = modal
+
+        container = tk.Frame(modal, bg=self.PANEL, padx=20, pady=14)
+        container.pack(fill="both", expand=True)
+
+        listbox = tk.Listbox(container, bg=self.TEXT_BG, fg=self.FG, relief="flat", font=("Segoe UI", 9))
+        listbox.pack(fill="both", expand=True, pady=(0, 10))
+
+        form = tk.Frame(container, bg=self.PANEL)
+        form.pack(fill="x")
+
+        def refresh_listbox() -> None:
+            listbox.delete(0, "end")
+            for c in self.contacts:
+                text = f"{c.name}  |  {c.address}"
+                if c.note:
+                    text += f"  |  {c.note}"
+                listbox.insert("end", text)
+
+        name_var = tk.StringVar()
+        addr_var = tk.StringVar()
+        note_var = tk.StringVar()
+        self._labeled_entry(form, 0, "Name", name_var, self.MAX_CONTACT_NAME)
+        self._labeled_entry(form, 1, "Address", addr_var, self.MAX_ADDRESS_TEXT)
+        self._labeled_entry(form, 2, "Note (optional)", note_var, self.MAX_NOTE_TEXT)
+
+        actions = tk.Frame(form, bg=self.PANEL)
+        actions.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+        actions.grid_columnconfigure(0, weight=1)
+        actions.grid_columnconfigure(1, weight=1)
+
+        def add_contact() -> None:
+            result = validate_address(addr_var.get(), self.ws.network)
+            if not result:
+                self.toast(result.error, "error")
+                return
+            name = name_var.get().strip()
+            if not name:
+                self.toast("Contact name is required", "error")
+                return
+            if len(name) > self.MAX_CONTACT_NAME:
+                self.toast(f"Contact name too long (max {self.MAX_CONTACT_NAME})", "error")
+                return
+            self.contacts.append(Contact(name=name, address=addr_var.get().strip(), note=note_var.get().strip()))
+            self._save_contacts()
+            refresh_listbox()
+            self.toast("Contact saved", "ok")
+
+        def remove_selected() -> None:
+            selected = listbox.curselection()
+            if not selected:
+                return
+            idx = selected[0]
+            if 0 <= idx < len(self.contacts):
+                self.contacts.pop(idx)
+                self._save_contacts()
+                refresh_listbox()
+                self.toast("Contact removed", "ok")
+
+        AnimatedButton(actions, text="+ Add Contact", command=add_contact, base_bg="#ede9fe", hover_bg="#7c3aed", border_color="#ddd6fe").grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        AnimatedButton(actions, text="- Remove Selected", command=remove_selected, base_bg="#fee2e2", hover_bg="#dc2626", border_color="#fecaca").grid(row=0, column=1, padx=(6, 0), sticky="ew")
+
+        refresh_listbox()
 
     # ── Misc ──
 
