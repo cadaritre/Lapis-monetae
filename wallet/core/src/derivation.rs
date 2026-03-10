@@ -80,7 +80,7 @@ impl AddressManager {
         Ok(Self { wallet, account_kind, pubkey_managers, ecdsa, minimum_signatures, inner: Arc::new(Mutex::new(inner)) })
     }
 
-    pub fn inner(&self) -> MutexGuard<Inner> {
+    pub fn inner(&self) -> MutexGuard<'_, Inner> {
         self.inner.lock().unwrap()
     }
 
