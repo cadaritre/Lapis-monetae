@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fase 1 wallet launcher with dark GUI (Python wrapper for the existing CLI).
+Phase 1 wallet launcher with dark GUI (Python wrapper for the existing CLI).
 
 This script does not replace wallet logic. It delegates critical operations
 to the project CLI so create/import/open and address workflows stay consistent.
@@ -15,6 +15,7 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from tkinter import filedialog, ttk
@@ -134,10 +135,13 @@ class WalletGui(tk.Tk):
     ACCENT = "#3b57ff"
     SUCCESS = "#2ac98c"
     ERROR = "#ff5f7a"
+    WARNING = "#f8c14b"
 
     def __init__(self) -> None:
         super().__init__()
         self.config_data = load_config()
+        self.action_buttons: list[AnimatedButton] = []
+        self._busy = False
         self.title("Lapis Monetae Wallet Launcher")
         self.geometry("1020x700")
         self.minsize(920, 620)
@@ -145,7 +149,7 @@ class WalletGui(tk.Tk):
         self._build_style()
         self._build_layout()
         self.refresh_cli_status()
-        self.log("GUI lista. Configura CLI y red, luego ejecuta acciones.")
+        self.log("GUI ready. Configure CLI and network, then run an action.")
 
     def _build_style(self) -> None:
         style = ttk.Style(self)
@@ -176,13 +180,25 @@ class WalletGui(tk.Tk):
         ).pack(anchor="w")
         tk.Label(
             header,
-            text="Fase 1 - GUI moderna en modo oscuro",
+            text="Phase 1 - Modern dark mode GUI",
             bg=self.BG,
             fg=self.MUTED,
             font=("Segoe UI", 10),
         ).pack(anchor="w", pady=(2, 0))
+        self.pill_status = tk.Label(
+            header,
+            text=" READY ",
+            bg="#1f2740",
+            fg="#c9d8ff",
+            font=("Segoe UI Semibold", 9),
+            padx=10,
+            pady=4,
+        )
+        self.pill_status.pack(anchor="e", pady=(0, 2))
 
-        top_panel = tk.Frame(outer, bg=self.PANEL, padx=14, pady=14)
+        top_shell = tk.Frame(outer, bg="#0c0f18", padx=1, pady=1)
+        top_shell.pack(fill="x")
+        top_panel = tk.Frame(top_shell, bg=self.PANEL, padx=14, pady=14)
         top_panel.pack(fill="x")
 
         tk.Label(top_panel, text="CLI path", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10)).grid(row=0, column=0, sticky="w")
@@ -198,8 +214,8 @@ class WalletGui(tk.Tk):
         )
         cli_entry.grid(row=1, column=0, sticky="ew", padx=(0, 8), ipady=8)
 
-        AnimatedButton(top_panel, text="Examinar", command=self.on_browse_cli).grid(row=1, column=1, padx=(0, 8))
-        AnimatedButton(top_panel, text="Guardar", command=self.on_save_cli_path, base_bg="#2f3653", hover_bg="#4b57a3").grid(row=1, column=2)
+        AnimatedButton(top_panel, text="Browse", command=self.on_browse_cli).grid(row=1, column=1, padx=(0, 8))
+        AnimatedButton(top_panel, text="Save", command=self.on_save_cli_path, base_bg="#2f3653", hover_bg="#4b57a3").grid(row=1, column=2)
 
         tk.Label(top_panel, text="Network", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10)).grid(row=0, column=3, sticky="w", padx=(18, 0))
         self.network_var = tk.StringVar(value=self.config_data.get("network", DEFAULT_NETWORK))
@@ -232,20 +248,31 @@ class WalletGui(tk.Tk):
         status = tk.Label(outer, textvariable=self.status_var, bg=self.BG, fg=self.MUTED, font=("Segoe UI", 10))
         status.pack(anchor="w", pady=(10, 8))
 
-        actions = tk.Frame(outer, bg=self.BG)
-        actions.pack(fill="x", pady=(0, 12))
+        actions_shell = tk.Frame(outer, bg="#0c0f18", padx=1, pady=1)
+        actions_shell.pack(fill="x", pady=(0, 12))
+        actions = tk.Frame(actions_shell, bg=self.PANEL, padx=10, pady=10)
+        actions.pack(fill="x")
 
-        AnimatedButton(actions, text="Create Wallet", command=self.action_create, hover_bg="#465bff").grid(row=0, column=0, padx=(0, 8), pady=6, sticky="ew")
-        AnimatedButton(actions, text="Import Wallet", command=self.action_import, hover_bg="#4f67ff").grid(row=0, column=1, padx=8, pady=6, sticky="ew")
-        AnimatedButton(actions, text="Open Wallet", command=self.action_open, hover_bg="#5a72ff").grid(row=0, column=2, padx=8, pady=6, sticky="ew")
-        AnimatedButton(actions, text="Wallet List", command=lambda: self.run_capture_action(["wallet", "list"]), hover_bg="#2f9df0").grid(row=0, column=3, padx=8, pady=6, sticky="ew")
-        AnimatedButton(actions, text="Accounts/Balances", command=self.action_list_balances, hover_bg="#1fa9cc").grid(row=0, column=4, padx=8, pady=6, sticky="ew")
-        AnimatedButton(actions, text="Show Address", command=lambda: self.run_capture_action(["address"]), hover_bg="#27bb9c").grid(row=0, column=5, padx=8, pady=6, sticky="ew")
-        AnimatedButton(actions, text="New Address", command=lambda: self.run_capture_action(["address", "new"]), hover_bg="#31c27b").grid(row=0, column=6, padx=(8, 0), pady=6, sticky="ew")
-        for col in range(7):
-            actions.grid_columnconfigure(col, weight=1)
+        row1 = tk.Frame(actions, bg=self.PANEL)
+        row1.pack(fill="x", pady=(0, 8))
+        row2 = tk.Frame(actions, bg=self.PANEL)
+        row2.pack(fill="x")
 
-        output_panel = tk.Frame(outer, bg=self.PANEL, padx=12, pady=10)
+        self._add_action_button(row1, 0, "Create Wallet", self.action_create, "#465bff")
+        self._add_action_button(row1, 1, "Import Wallet", self.action_import, "#4f67ff")
+        self._add_action_button(row1, 2, "Open Wallet", self.action_open, "#5a72ff")
+        self._add_action_button(row1, 3, "Wallet List", lambda: self.run_capture_action(["wallet", "list"]), "#2f9df0")
+        self._add_action_button(row2, 0, "Accounts/Balances", self.action_list_balances, "#1fa9cc")
+        self._add_action_button(row2, 1, "Show Address", lambda: self.run_capture_action(["address"]), "#27bb9c")
+        self._add_action_button(row2, 2, "New Address", lambda: self.run_capture_action(["address", "new"]), "#31c27b")
+        self._add_action_button(row2, 3, "Clear Output", self.clear_output, "#7d4df2")
+        for col in range(4):
+            row1.grid_columnconfigure(col, weight=1)
+            row2.grid_columnconfigure(col, weight=1)
+
+        output_shell = tk.Frame(outer, bg="#0c0f18", padx=1, pady=1)
+        output_shell.pack(fill="both", expand=True)
+        output_panel = tk.Frame(output_shell, bg=self.PANEL, padx=12, pady=10)
         output_panel.pack(fill="both", expand=True)
         tk.Label(output_panel, text="Command Output", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI Semibold", 10)).pack(anchor="w", pady=(0, 6))
 
@@ -261,8 +288,18 @@ class WalletGui(tk.Tk):
             pady=10,
         )
         self.output.pack(fill="both", expand=True)
+        self.output.tag_configure("ts", foreground="#7f95c7")
+        self.output.tag_configure("error", foreground=self.ERROR)
+        self.output.tag_configure("ok", foreground=self.SUCCESS)
+
+    def _add_action_button(self, parent: tk.Frame, col: int, text: str, command: Any, hover: str) -> None:
+        btn = AnimatedButton(parent, text=text, command=command, hover_bg=hover)
+        btn.grid(row=0, column=col, padx=6, pady=6, sticky="ew")
+        self.action_buttons.append(btn)
 
     def log(self, text: str) -> None:
+        ts = datetime.now().strftime("%H:%M:%S")
+        self.output.insert("end", f"[{ts}] ", ("ts",))
         self.output.insert("end", text.rstrip() + "\n")
         self.output.see("end")
 
@@ -276,41 +313,58 @@ class WalletGui(tk.Tk):
         save_config(self.config_data)
         self.refresh_cli_status()
         self.log("CLI path saved.")
+        self.toast("CLI path saved", "ok")
 
     def on_network_change(self) -> None:
         self.config_data["network"] = self.network_var.get().strip() or DEFAULT_NETWORK
         save_config(self.config_data)
         self.log(f"Network saved: {self.config_data['network']}")
+        self.toast(f"Active network: {self.config_data['network']}", "info")
 
     def refresh_cli_status(self) -> None:
         binary = resolve_cli_binary(self.config_data)
         if binary:
             self.status_var.set(f"CLI: {binary} | Network: {self.config_data.get('network', DEFAULT_NETWORK)}")
+            self._set_pill(" READY ", "#1f2740", "#c9d8ff")
         else:
             self.status_var.set(f"CLI: not found | Network: {self.config_data.get('network', DEFAULT_NETWORK)}")
+            self._set_pill(" CLI MISSING ", "#3a1f2a", "#ffd0d9")
 
     def require_cli(self) -> str | None:
         self.refresh_cli_status()
         binary = resolve_cli_binary(self.config_data)
         if not binary:
-            self.log("ERROR: CLI binary not found. Set path or define LMT_CLI_BIN.")
+            self.log("ERROR: CLI binary not found. Set a path or define LMT_CLI_BIN.")
+            self.toast("CLI was not found", "error")
             return None
         return binary
 
     def run_capture_action(self, args: list[str], ensure_network: bool = False) -> None:
+        if self._busy:
+            self.toast("Please wait for the current command to finish", "info")
+            return
         binary = self.require_cli()
         if not binary:
             return
+
+        self._set_busy(True)
 
         def worker() -> None:
             if ensure_network:
                 net_code, net_out = self.run_capture(binary, ["network", self.config_data.get("network", DEFAULT_NETWORK)])
                 self.after(0, lambda: self.log(net_out))
                 if net_code != 0:
+                    self.after(0, lambda: self.toast("Failed to select network", "error"))
+                    self.after(0, lambda: self._set_busy(False))
                     return
             code, out = self.run_capture(binary, args)
             self.after(0, lambda: self.log(out))
             self.after(0, lambda: self.log(f"Exit code: {code}\n"))
+            if code == 0:
+                self.after(0, lambda: self.toast("Command completed", "ok"))
+            else:
+                self.after(0, lambda: self.toast("Command finished with an error", "error"))
+            self.after(0, lambda: self._set_busy(False))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -331,6 +385,9 @@ class WalletGui(tk.Tk):
         return result.returncode, text
 
     def launch_interactive(self, args: list[str]) -> None:
+        if self._busy:
+            self.toast("Please wait for the current command to finish", "info")
+            return
         binary = self.require_cli()
         if not binary:
             return
@@ -342,11 +399,14 @@ class WalletGui(tk.Tk):
             if os.name == "nt":
                 subprocess.Popen(command, creationflags=subprocess.CREATE_NEW_CONSOLE, cwd=str(Path(__file__).parent))
                 self.log(f"Launched interactive command in new console: {' '.join(command)}")
+                self.toast("Interactive command opened in a new console", "info")
             else:
                 subprocess.Popen(command, cwd=str(Path(__file__).parent))
                 self.log(f"Launched interactive command: {' '.join(command)}")
+                self.toast("Interactive command launched", "info")
         except OSError as err:
             self.log(f"ERROR launching interactive command: {err}")
+            self.toast("Error opening interactive console", "error")
 
     def _wallet_name(self) -> str:
         return self.wallet_name_var.get().strip()
@@ -374,6 +434,62 @@ class WalletGui(tk.Tk):
 
     def action_list_balances(self) -> None:
         self.run_capture_action(["list"], ensure_network=True)
+
+    def clear_output(self) -> None:
+        self.output.delete("1.0", "end")
+        self.toast("Output cleared", "ok")
+
+    def _set_busy(self, busy: bool) -> None:
+        self._busy = busy
+        state = "disabled" if busy else "normal"
+        for button in self.action_buttons:
+            button.config(state=state)
+        if busy:
+            self._set_pill(" RUNNING ", "#2d2439", "#efd4ff")
+        else:
+            self.refresh_cli_status()
+
+    def _set_pill(self, text: str, bg: str, fg: str) -> None:
+        self.pill_status.config(text=text, bg=bg, fg=fg)
+
+    def toast(self, message: str, kind: str = "info") -> None:
+        colors = {
+            "ok": ("#143328", "#a8f2cf"),
+            "error": ("#3c1e29", "#ffc5d0"),
+            "info": ("#1c2e45", "#c8ddff"),
+            "warn": ("#3d3218", "#ffe6a6"),
+        }
+        bg, fg = colors.get(kind, colors["info"])
+
+        toast = tk.Toplevel(self)
+        toast.overrideredirect(True)
+        toast.attributes("-topmost", True)
+        toast.attributes("-alpha", 0.0)
+        width, height = 320, 46
+        x = self.winfo_rootx() + self.winfo_width() - width - 24
+        y = self.winfo_rooty() + 24
+        toast.geometry(f"{width}x{height}+{x}+{y}")
+        tk.Frame(toast, bg="#0c0f18", padx=1, pady=1).pack(fill="both", expand=True)
+        inner = tk.Frame(toast, bg=bg)
+        inner.place(relx=0, rely=0, relwidth=1, relheight=1)
+        tk.Label(inner, text=message, bg=bg, fg=fg, font=("Segoe UI Semibold", 10), anchor="w").pack(fill="both", expand=True, padx=12)
+
+        def fade_in(alpha: float = 0.0) -> None:
+            if alpha >= 0.96:
+                toast.attributes("-alpha", 0.96)
+                toast.after(1700, fade_out, 0.96)
+                return
+            toast.attributes("-alpha", alpha)
+            toast.after(18, fade_in, alpha + 0.12)
+
+        def fade_out(alpha: float) -> None:
+            if alpha <= 0.0:
+                toast.destroy()
+                return
+            toast.attributes("-alpha", alpha)
+            toast.after(18, fade_out, alpha - 0.14)
+
+        fade_in()
 
 
 def main() -> int:
