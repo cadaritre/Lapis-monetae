@@ -4,7 +4,7 @@ Lapis Monetae (LMT) is a Rust-based full node derived from the Kaspa codebase, a
 
 ## Consensus & Roadmap
 - Supply and Emission: Adjusted to a target of 100,000,000 LMT over ~8 years.
-- Consensus: PoW-first with planned PoA (Proof of Authority) augmentation for governance and anchoring.
+- Consensus: RandomX Proof-of-Work.
 - Mining: RandomX PoW is active; LMT-native stratum tooling is integrated under `tools/xmrig-lmt`.
 - Platform Integration: Planned integration with the "Lapis Mens" platform for ecosystem services.
 
