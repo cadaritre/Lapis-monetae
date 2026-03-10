@@ -96,7 +96,7 @@ impl AddressManager {
         let keys = list.into_iter().collect::<kaspa_wallet_keys::result::Result<Vec<_>>>()?;
         let address = self.create_address(keys)?;
 
-        self.update_address_to_index_map(self.index(), &[address.clone()])?;
+        self.update_address_to_index_map(self.index(), std::slice::from_ref(&address))?;
 
         Ok(address)
     }

@@ -794,7 +794,7 @@ pub trait DerivationCapableAccount: Account {
 
     async fn new_receive_address(self: Arc<Self>) -> Result<Address> {
         let address = self.derivation().receive_address_manager().new_address()?;
-        self.utxo_context().register_addresses(&[address.clone()]).await?;
+        self.utxo_context().register_addresses(std::slice::from_ref(&address)).await?;
 
         let metadata = self.metadata()?.expect("derivation accounts must provide metadata");
         let store = self.wallet().store().as_account_store()?;
@@ -807,7 +807,7 @@ pub trait DerivationCapableAccount: Account {
 
     async fn new_change_address(self: Arc<Self>) -> Result<Address> {
         let address = self.derivation().change_address_manager().new_address()?;
-        self.utxo_context().register_addresses(&[address.clone()]).await?;
+        self.utxo_context().register_addresses(std::slice::from_ref(&address)).await?;
 
         let metadata = self.metadata()?.expect("derivation accounts must provide metadata");
         let store = self.wallet().store().as_account_store()?;

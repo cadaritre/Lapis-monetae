@@ -111,8 +111,8 @@ mod tests {
     }
     fn test_parents_by_level_rxp(r: &[Vec<RpcHash>], p: &[protowire::RpcBlockLevelParents]) {
         for i in 0..r.len() {
-            for j in 0..r[i].len() {
-                assert_eq!(r[i][j].to_string(), p[i].parent_hashes[j]);
+            for (j, hash) in r[i].iter().enumerate() {
+                assert_eq!(hash.to_string(), p[i].parent_hashes[j]);
             }
         }
     }

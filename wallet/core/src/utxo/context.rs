@@ -830,6 +830,6 @@ impl Ord for UtxoContext {
 
 impl PartialOrd for UtxoContext {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.id().cmp(other.id_as_ref()))
+        Some(self.cmp(other))
     }
 }
