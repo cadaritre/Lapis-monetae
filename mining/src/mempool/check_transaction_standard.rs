@@ -263,7 +263,7 @@ mod tests {
             want: u64,
         }
 
-        let tests = vec![
+        let tests = [
             Test {
                 // Ensure combination of size and fee that are less than 1000
                 // produce a non-zero fee.
@@ -326,7 +326,7 @@ mod tests {
             is_dust: bool,
         }
 
-        let tests = vec![
+        let tests = [
             // Any value is allowed with a zero relay fee.
             Test {
                 name: "zero value with zero relay fee",
@@ -418,7 +418,7 @@ mod tests {
             mtx
         }
 
-        let tests = vec![
+        let tests = [
             Test {
                 name: "Typical pay-to-pubkey transaction",
                 mtx: new_mtx(
