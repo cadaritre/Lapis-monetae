@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import threading
 import tkinter as tk
 from datetime import datetime
@@ -10,7 +11,14 @@ from .cli_bridge import launch_interactive, run_capture
 from .config import DEFAULT_NETWORK, NETWORK_CHOICES, load_config, resolve_cli_binary, save_config
 from .ui_components import AnimatedButton
 
-MIN_ADDRESS_LEN = 16
+MIN_ADDRESS_LEN = 24
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+BECH32_CHARS = set("023456789acdefghjklmnpqrstuvwxyz")
+NETWORK_PREFIX = {
+    "mainnet": "lmt",
+    "testnet-10": "lmttest",
+    "testnet-11": "lmttest",
+}
 
 
 class WalletGui(tk.Tk):
@@ -30,6 +38,7 @@ class WalletGui(tk.Tk):
         self._busy = False
         self.send_modal: tk.Toplevel | None = None
         self.transfer_modal: tk.Toplevel | None = None
+        self.account_suggestions: list[str] = []
         self.title("Lapis Monetae Wallet Launcher")
         self.geometry("1020x700")
         self.minsize(920, 620)
@@ -118,7 +127,7 @@ class WalletGui(tk.Tk):
         network_box.bind("<<ComboboxSelected>>", lambda _e: self.on_network_change())
 
         tk.Label(top_panel, text="Wallet name (optional)", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10)).grid(row=0, column=4, sticky="w", padx=(18, 0))
-        self.wallet_name_var = tk.StringVar()
+        self.wallet_name_var = tk.StringVar(value=self.config_data.get("last_wallet", ""))
         tk.Entry(
             top_panel,
             textvariable=self.wallet_name_var,
@@ -149,15 +158,15 @@ class WalletGui(tk.Tk):
         self._add_action_button(row1, 0, "Create Wallet", self.action_create, "#465bff")
         self._add_action_button(row1, 1, "Import Wallet", self.action_import, "#4f67ff")
         self._add_action_button(row1, 2, "Open Wallet", self.action_open, "#5a72ff")
-        self._add_action_button(row1, 3, "Wallet List", lambda: self.run_capture_action(["wallet", "list"]), "#2f9df0")
-        self._add_action_button(row2, 0, "Accounts/Balances", self.action_list_balances, "#1fa9cc")
+        self._add_action_button(row1, 3, "Open Last Wallet", self.action_open_last_wallet, "#3f7bff")
+        self._add_action_button(row2, 0, "Wallet List", lambda: self.run_capture_action(["wallet", "list"]), "#2f9df0")
         self._add_action_button(row2, 1, "Show Address", lambda: self.run_capture_action(["address"]), "#27bb9c")
         self._add_action_button(row2, 2, "New Address", lambda: self.run_capture_action(["address", "new"]), "#31c27b")
-        self._add_action_button(row2, 3, "Clear Output", self.clear_output, "#7d4df2")
+        self._add_action_button(row2, 3, "Accounts/Balances", self.action_list_balances, "#1fa9cc")
         self._add_action_button(row3, 0, "Send LMT", self.open_send_modal, "#c056ff")
         self._add_action_button(row3, 1, "Transfer Between Accounts", self.open_transfer_modal, "#f27767")
-        tk.Label(row3, text="", bg=self.PANEL).grid(row=0, column=2, padx=6, pady=6, sticky="ew")
-        tk.Label(row3, text="", bg=self.PANEL).grid(row=0, column=3, padx=6, pady=6, sticky="ew")
+        self._add_action_button(row3, 2, "Refresh Account Suggestions", self.refresh_account_suggestions, "#f0a340")
+        self._add_action_button(row3, 3, "Clear Output", self.clear_output, "#7d4df2")
         for col in range(4):
             row1.grid_columnconfigure(col, weight=1)
             row2.grid_columnconfigure(col, weight=1)
@@ -205,6 +214,13 @@ class WalletGui(tk.Tk):
         self.refresh_cli_status()
         self.log("CLI path saved.")
         self.toast("CLI path saved", "ok")
+
+    def _save_last_wallet(self, wallet_name: str) -> None:
+        normalized = wallet_name.strip()
+        if not normalized:
+            return
+        self.config_data["last_wallet"] = normalized
+        save_config(self.config_data)
 
     def on_network_change(self) -> None:
         self.config_data["network"] = self.network_var.get().strip() or DEFAULT_NETWORK
@@ -280,6 +296,7 @@ class WalletGui(tk.Tk):
         name = self._wallet_name()
         if name:
             args.append(name)
+            self._save_last_wallet(name)
         self.run_interactive_action(args)
 
     def action_import(self) -> None:
@@ -287,6 +304,7 @@ class WalletGui(tk.Tk):
         name = self._wallet_name()
         if name:
             args.append(name)
+            self._save_last_wallet(name)
         self.run_interactive_action(args)
 
     def action_open(self) -> None:
@@ -294,7 +312,16 @@ class WalletGui(tk.Tk):
         name = self._wallet_name()
         if name:
             args.append(name)
+            self._save_last_wallet(name)
         self.run_interactive_action(args)
+
+    def action_open_last_wallet(self) -> None:
+        last_wallet = str(self.config_data.get("last_wallet", "")).strip()
+        if not last_wallet:
+            self.toast("No last wallet is saved yet", "info")
+            return
+        self.wallet_name_var.set(last_wallet)
+        self.run_interactive_action(["wallet", "open", last_wallet])
 
     def action_list_balances(self) -> None:
         self.run_capture_action(["list"], ensure_network=True)
@@ -344,7 +371,7 @@ class WalletGui(tk.Tk):
         amount_var = tk.StringVar()
         fee_var = tk.StringVar(value="0")
 
-        self._labeled_entry(content, 0, "Target account (name or id)", account_var)
+        self._labeled_combo(content, 0, "Target account (name or id)", account_var, self.account_suggestions)
         self._labeled_entry(content, 1, "Amount (LMT)", amount_var)
         self._labeled_entry(content, 2, "Priority fee (LMT, optional)", fee_var)
 
@@ -360,6 +387,9 @@ class WalletGui(tk.Tk):
             base_bg="#df5a45",
             hover_bg="#f27767",
         ).grid(row=0, column=1, padx=(6, 0), sticky="ew")
+
+        if not self.account_suggestions:
+            self.refresh_account_suggestions(silent=True)
 
     def _create_modal(self, title: str) -> tk.Toplevel:
         modal = tk.Toplevel(self)
@@ -386,6 +416,14 @@ class WalletGui(tk.Tk):
         ).pack(fill="x", ipady=8)
         parent.grid_columnconfigure(0, weight=1)
 
+    def _labeled_combo(self, parent: tk.Frame, row: int, label: str, variable: tk.StringVar, values: list[str]) -> None:
+        frame = tk.Frame(parent, bg=self.PANEL)
+        frame.grid(row=row, column=0, sticky="ew", pady=6)
+        tk.Label(frame, text=label, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 4))
+        combo = ttk.Combobox(frame, textvariable=variable, values=values, style="Dark.TCombobox")
+        combo.pack(fill="x", ipady=6)
+        parent.grid_columnconfigure(0, weight=1)
+
     def _parse_positive_amount(self, value: str) -> float | None:
         try:
             amount = float(value.strip())
@@ -405,7 +443,67 @@ class WalletGui(tk.Tk):
 
     def _valid_lmt_address(self, address: str) -> bool:
         normalized = address.strip().lower()
-        return normalized.startswith("lmt") and len(normalized) >= MIN_ADDRESS_LEN
+        if len(normalized) < MIN_ADDRESS_LEN or ":" not in normalized:
+            return False
+        expected_prefix = NETWORK_PREFIX.get(str(self.config_data.get("network", DEFAULT_NETWORK)), "lmt")
+        prefix, payload = normalized.split(":", 1)
+        if prefix != expected_prefix or not payload:
+            return False
+        return all(ch in BECH32_CHARS for ch in payload)
+
+    def _extract_account_suggestions(self, output: str) -> list[str]:
+        suggestions: list[str] = []
+        seen: set[str] = set()
+        for raw_line in output.splitlines():
+            line = ANSI_ESCAPE_RE.sub("", raw_line)
+            match = re.match(r"^\s{2,}•\s+(.+)$", line)
+            if not match:
+                continue
+            candidate = match.group(1).strip()
+            # Exclude address lines and feature descriptors.
+            if ":" in candidate and candidate.split(":", 1)[0] in {"lmt", "lmttest", "lmtsim", "lmtdev"}:
+                continue
+            if candidate.startswith("• "):
+                continue
+            if candidate and candidate not in seen:
+                seen.add(candidate)
+                suggestions.append(candidate)
+        return suggestions
+
+    def refresh_account_suggestions(self, silent: bool = False) -> None:
+        if self._busy:
+            if not silent:
+                self.toast("Please wait for the current command to finish", "info")
+            return
+        binary = self.require_cli()
+        if not binary:
+            return
+
+        def worker() -> None:
+            net_code, net_out = run_capture(binary, ["network", self.config_data.get("network", DEFAULT_NETWORK)])
+            if net_code != 0:
+                self.after(0, lambda: self.log(net_out))
+                if not silent:
+                    self.after(0, lambda: self.toast("Failed to select network for account refresh", "error"))
+                return
+            code, out = run_capture(binary, ["list"])
+            suggestions = self._extract_account_suggestions(out) if code == 0 else []
+
+            def apply_results() -> None:
+                self.log(out)
+                if suggestions:
+                    self.account_suggestions = suggestions
+                    if self.transfer_modal and self.transfer_modal.winfo_exists():
+                        self.transfer_modal.destroy()
+                        self.open_transfer_modal()
+                    if not silent:
+                        self.toast(f"Loaded {len(suggestions)} account suggestions", "ok")
+                elif not silent:
+                    self.toast("No account suggestions found (open wallet first)", "info")
+
+            self.after(0, apply_results)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _confirm_action(self, title: str, lines: list[str], on_confirm: Callable[[], None]) -> None:
         modal = self._create_modal(title)

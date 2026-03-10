@@ -15,6 +15,10 @@ This GUI wraps the existing project CLI (`kaspa-cli` / `lmt-cli`) and does not r
 - Wallet Phase 2 flows:
   - send LMT with validation and confirmation
   - transfer between accounts with validation and confirmation
+- Phase 2.1 enhancements:
+  - strict network-aware address prefix validation (`lmt:` vs `lmttest:`)
+  - account suggestion refresh for transfer targets
+  - persisted last wallet for faster reopen
 - Interactive CLI commands open in a separate console for secure secret prompts
 
 ## Folder Structure
@@ -44,6 +48,12 @@ From repository root:
 python wallet-gui/main.py
 ```
 
+On Windows, you can also double-click:
+
+```bash
+start-wallet-gui.bat
+```
+
 ## Usage
 
 1. Open app.
@@ -59,6 +69,8 @@ python wallet-gui/main.py
    - **New Address**
    - **Send LMT**
    - **Transfer Between Accounts**
+   - **Refresh Account Suggestions**
+   - **Open Last Wallet**
 
 ## Notes
 

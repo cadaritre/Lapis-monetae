@@ -16,14 +16,15 @@ CONFIG_PATH = APP_DIR / ".wallet_gui_config.json"
 
 def load_config() -> dict[str, Any]:
     if not CONFIG_PATH.exists():
-        return {"cli_path": "", "network": DEFAULT_NETWORK}
+        return {"cli_path": "", "network": DEFAULT_NETWORK, "last_wallet": ""}
     try:
         data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return {"cli_path": "", "network": DEFAULT_NETWORK}
+        return {"cli_path": "", "network": DEFAULT_NETWORK, "last_wallet": ""}
     return {
         "cli_path": str(data.get("cli_path", "")).strip(),
         "network": str(data.get("network", DEFAULT_NETWORK)).strip() or DEFAULT_NETWORK,
+        "last_wallet": str(data.get("last_wallet", "")).strip(),
     }
 
 
