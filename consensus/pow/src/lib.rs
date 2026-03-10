@@ -9,7 +9,9 @@ pub mod xoshiro;
 use std::cmp::max;
 
 use kaspa_consensus_core::{hashing, header::Header, BlockLevel};
-use kaspa_hashes::{Hash, PowHash};
+use kaspa_hashes::Hash;
+#[cfg(target_arch = "wasm32")]
+use kaspa_hashes::PowHash;
 use kaspa_math::Uint256;
 #[cfg(not(target_arch = "wasm32"))]
 use randomx_rs::{RandomXCache, RandomXFlag, RandomXVM};

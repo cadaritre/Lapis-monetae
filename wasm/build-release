@@ -66,7 +66,12 @@ cp -r docs/kaspa-core release/kaspa-wasm32-sdk/docs/kaspa-core
 cp -r docs/kaspa release/kaspa-wasm32-sdk/docs/kaspa
 
 mkdir -p release/kaspa-wasm32-sdk/examples/data
-cp -r examples/data/.gitignore release/kaspa-wasm32-sdk/examples/data/.gitignore
+if [ -f examples/data/.gitignore ]; then
+  cp -r examples/data/.gitignore release/kaspa-wasm32-sdk/examples/data/.gitignore
+else
+  # Keep the folder in packaged artifacts even if source .gitignore is absent.
+  touch release/kaspa-wasm32-sdk/examples/data/.gitignore
+fi
 cp -r examples/nodejs release/kaspa-wasm32-sdk/examples/
 cp -r examples/web release/kaspa-wasm32-sdk/examples/
 cp -r examples/init.js release/kaspa-wasm32-sdk/examples/
