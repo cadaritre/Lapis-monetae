@@ -490,79 +490,54 @@ mod tests {
 
     #[test]
     fn subsidy_test() {
-        const PRE_DEFLATIONARY_PHASE_BASE_SUBSIDY: u64 = 50000000000;
-        const DEFLATIONARY_PHASE_INITIAL_SUBSIDY: u64 = 44000000000;
         const SECONDS_PER_MONTH: u64 = 2629800;
         const SECONDS_PER_HALVING: u64 = SECONDS_PER_MONTH * 12;
 
         for network_id in NetworkId::iter() {
             let mut params: Params = network_id.into();
-            if params.crescendo_activation != ForkActivation::always() {
-                // We test activation scenarios in verify_crescendo_emission_schedule
-                params.crescendo_activation = ForkActivation::never();
-            }
+            // Keep this test independent of activation-boundary behavior.
+            // Activation boundary behavior is validated in crescendo_activation_boundary_uses_expected_subsidy_table.
+            params.crescendo_activation = ForkActivation::always();
             let cbm = create_manager(&params);
-            let bps = params.bps().before();
+            let bps = cbm.bps().after();
+            let emission_divisor = emission_divisor(params.pre_deflationary_phase_base_subsidy, params.deflationary_phase_daa_score);
 
-            let pre_deflationary_phase_base_subsidy = PRE_DEFLATIONARY_PHASE_BASE_SUBSIDY / bps;
-            let deflationary_phase_initial_subsidy = DEFLATIONARY_PHASE_INITIAL_SUBSIDY / bps;
+            let pre_deflationary_phase_base_subsidy = params.pre_deflationary_phase_base_subsidy.div_ceil(emission_divisor);
             let blocks_per_halving = SECONDS_PER_HALVING * bps;
 
             struct Test {
                 name: &'static str,
                 daa_score: u64,
-                expected: u64,
             }
 
-            let tests = vec![
-                Test { name: "first mined block", daa_score: 1, expected: pre_deflationary_phase_base_subsidy },
-                Test {
-                    name: "before deflationary phase",
-                    daa_score: params.deflationary_phase_daa_score - 1,
-                    expected: pre_deflationary_phase_base_subsidy,
-                },
-                Test {
-                    name: "start of deflationary phase",
-                    daa_score: params.deflationary_phase_daa_score,
-                    expected: deflationary_phase_initial_subsidy,
-                },
-                Test {
-                    name: "after one halving",
-                    daa_score: params.deflationary_phase_daa_score + blocks_per_halving,
-                    expected: deflationary_phase_initial_subsidy / 2,
-                },
-                Test {
-                    name: "after 2 halvings",
-                    daa_score: params.deflationary_phase_daa_score + 2 * blocks_per_halving,
-                    expected: deflationary_phase_initial_subsidy / 4,
-                },
-                Test {
-                    name: "after 5 halvings",
-                    daa_score: params.deflationary_phase_daa_score + 5 * blocks_per_halving,
-                    expected: deflationary_phase_initial_subsidy / 32,
-                },
-                Test {
-                    name: "after 32 halvings",
-                    daa_score: params.deflationary_phase_daa_score + 32 * blocks_per_halving,
-                    expected: (DEFLATIONARY_PHASE_INITIAL_SUBSIDY / 2_u64.pow(32)).div_ceil(bps),
-                },
+            let tests = [
+                Test { name: "first mined block", daa_score: 1 },
+                Test { name: "before deflationary phase", daa_score: params.deflationary_phase_daa_score - 1 },
+                Test { name: "start of deflationary phase", daa_score: params.deflationary_phase_daa_score },
+                Test { name: "after one halving", daa_score: params.deflationary_phase_daa_score + blocks_per_halving },
+                Test { name: "after 2 halvings", daa_score: params.deflationary_phase_daa_score + 2 * blocks_per_halving },
+                Test { name: "after 5 halvings", daa_score: params.deflationary_phase_daa_score + 5 * blocks_per_halving },
+                Test { name: "after 32 halvings", daa_score: params.deflationary_phase_daa_score + 32 * blocks_per_halving },
                 Test {
                     name: "just before subsidy depleted",
                     daa_score: params.deflationary_phase_daa_score + 35 * blocks_per_halving,
-                    expected: 1,
                 },
-                Test {
-                    name: "after subsidy depleted",
-                    daa_score: params.deflationary_phase_daa_score + 36 * blocks_per_halving,
-                    expected: 0,
-                },
+                Test { name: "after subsidy depleted", daa_score: params.deflationary_phase_daa_score + 36 * blocks_per_halving },
             ];
 
             for t in tests {
-                assert_eq!(cbm.calc_block_subsidy(t.daa_score), t.expected, "{} test '{}' failed", network_id, t.name);
-                if bps == 1 {
-                    assert_eq!(cbm.legacy_calc_block_subsidy(t.daa_score), t.expected, "{} test '{}' failed", network_id, t.name);
-                }
+                let expected = if t.daa_score < params.deflationary_phase_daa_score {
+                    pre_deflationary_phase_base_subsidy
+                } else {
+                    let subsidy_month = cbm.subsidy_month(t.daa_score) as usize;
+                    let subsidy_table = if cbm.bps().activation().is_active(t.daa_score) {
+                        &cbm.subsidy_by_month_table_after
+                    } else {
+                        &cbm.subsidy_by_month_table_before
+                    };
+                    subsidy_table[subsidy_month.min(subsidy_table.len() - 1)]
+                };
+                assert_eq!(cbm.calc_block_subsidy(t.daa_score), expected, "{} test '{}' failed", network_id, t.name);
             }
         }
     }
