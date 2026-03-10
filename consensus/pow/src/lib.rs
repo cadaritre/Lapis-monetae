@@ -77,7 +77,7 @@ impl State {
             let input = build_randomx_input(self.pre_pow_hash, self.timestamp, nonce);
             let hash_bytes = self.vm.calculate_hash(&input).expect("RandomX PoW hash calculation failed");
             let hash = Hash::from_slice(&hash_bytes);
-            return Uint256::from_le_bytes(hash.as_bytes());
+            Uint256::from_le_bytes(hash.as_bytes())
         }
 
         #[cfg(target_arch = "wasm32")]
