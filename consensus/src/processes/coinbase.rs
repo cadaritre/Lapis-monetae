@@ -348,7 +348,8 @@ mod tests {
     fn calc_high_bps_total_rewards_delta() {
         let params = &SIMNET_PARAMS;
         let target_total_sompi: u128 = 100_000_000u128 * (SOMPI_PER_KASPA as u128);
-        let pre_deflation_total: u128 = (params.pre_deflationary_phase_base_subsidy as u128) * (params.deflationary_phase_daa_score as u128);
+        let pre_deflation_total: u128 =
+            (params.pre_deflationary_phase_base_subsidy as u128) * (params.deflationary_phase_daa_score as u128);
         let deflation_total: u128 = SUBSIDY_BY_MONTH_TABLE.iter().map(|v| (*v as u128) * (SECONDS_PER_MONTH as u128)).sum();
         let scheduled_total: u128 = pre_deflation_total + deflation_total;
         let emission_divisor: u64 = if scheduled_total <= target_total_sompi {
@@ -359,8 +360,8 @@ mod tests {
 
         let scaled_pre_deflationary_base = params.pre_deflationary_phase_base_subsidy.div_ceil(emission_divisor);
         let pre_deflationary_rewards = scaled_pre_deflationary_base * params.deflationary_phase_daa_score;
-        let total_rewards: u64 =
-            pre_deflationary_rewards + SUBSIDY_BY_MONTH_TABLE.iter().map(|x| x.div_ceil(emission_divisor) * SECONDS_PER_MONTH).sum::<u64>();
+        let total_rewards: u64 = pre_deflationary_rewards
+            + SUBSIDY_BY_MONTH_TABLE.iter().map(|x| x.div_ceil(emission_divisor) * SECONDS_PER_MONTH).sum::<u64>();
         let testnet_11_bps = SIMNET_PARAMS.bps().upper_bound();
         let total_high_bps_rewards_rounded_up: u64 = pre_deflationary_rewards
             + SUBSIDY_BY_MONTH_TABLE
