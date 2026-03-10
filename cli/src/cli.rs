@@ -978,8 +978,7 @@ pub async fn kaspa_cli(terminal_options: TerminalOptions, banner: Option<String>
     let options = Options::new(terminal_options, None);
     let cli = KaspaCli::try_new_arc(options).await?;
 
-    let banner =
-        banner.unwrap_or_else(|| format!("LMT CLI Wallet v{} (type 'help' for list of commands)", env!("CARGO_PKG_VERSION")));
+    let banner = banner.unwrap_or_else(|| format!("LMT CLI Wallet v{} (type 'help' for list of commands)", env!("CARGO_PKG_VERSION")));
     cli.term().writeln(banner);
 
     // redirect the global log output to terminal

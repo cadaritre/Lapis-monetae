@@ -6,11 +6,58 @@ Lapis Monetae (LMT) is a Rust-based full node derived from the Kaspa codebase, a
 - Supply and Emission: Adjusted to a target of 100,000,000 LMT over ~8 years.
 - Consensus: RandomX Proof-of-Work.
 - Mining: RandomX PoW is active; LMT-native stratum tooling is integrated under `tools/xmrig-lmt`.
-- Platform Integration: Planned integration with the "Lapis Mens" platform for ecosystem services.
 
 ## Addresses & Networks
 - Address prefixes: `lmt:` (mainnet), `lmttest:`, `lmtsim:`, `lmtdev:`.
 - Network name strings: `lmt-mainnet`, `lmt-testnet-<suffix>`, etc.
+
+## Default Ports
+
+| Network   | P2P   | gRPC (RPC) | wRPC Borsh | wRPC JSON |
+|-----------|-------|------------|------------|-----------|
+| Mainnet   | 26111 | 26110      | 27110      | 28110     |
+| Testnet-10| 26211 | 26210      | 27210      | 28210     |
+| Testnet-11| 26311 | 26210      | 27210      | 28210     |
+| Simnet    | 26511 | 26510      | 27510      | 28510     |
+| Devnet    | 26611 | 26610      | 27610      | 28610     |
+
+## Project Structure
+
+```
+lapis-monetae/
+├── cli/            # CLI wallet and RPC interface
+├── consensus/      # Consensus rules and DAG logic
+├── core/           # Core primitives and utilities
+├── crypto/         # Cryptographic primitives (addresses, hashes, signatures)
+├── daemon/         # Node daemon wrapper
+├── database/       # RocksDB storage layer
+├── indexes/        # UTXO and transaction indexes
+├── kaspad/         # Main node binary (lmtd)
+├── math/           # Mathematical utilities
+├── metrics/        # Prometheus metrics
+├── mining/         # Mining manager and mempool
+├── notify/         # Event notification system
+├── protocol/       # P2P protocol and flows
+├── RandomX/        # RandomX PoW algorithm
+├── rpc/            # gRPC and wRPC servers
+├── simpa/          # Simulation and testing tools
+├── testing/        # Integration tests
+├── tools/          # Auxiliary tools (xmrig-lmt, etc.)
+├── utils/          # Shared utilities
+├── wallet/         # Wallet core library
+├── wallet-web/     # Web wallet components
+├── wasm/           # WASM bindings for JS/TS
+└── wallet.py       # Python GUI wallet launcher
+```
+
+## System Requirements
+
+| Component | Minimum       | Recommended      |
+|-----------|---------------|------------------|
+| RAM       | 4 GB          | 8+ GB            |
+| Disk      | 20 GB SSD     | 50+ GB NVMe SSD  |
+| CPU       | 2 cores       | 4+ cores         |
+| OS        | Linux/Windows/macOS (64-bit) |
 
 ## Build
 ### Linux
@@ -147,12 +194,47 @@ cargo run --release
 ```
 This provides a CLI-driven RPC interface to the node and a terminal wallet runtime compatible with the WASM SDK.
 
+## Python Wallet GUI
+A graphical wallet launcher is available via `wallet.py` in the root directory:
+```bash
+python wallet.py
+```
+This GUI wraps the CLI wallet, providing a dark-themed interface for:
+- Creating and importing wallets
+- Managing addresses
+- Sending transactions
+- Connecting to different networks (mainnet, testnet-10, testnet-11)
+
+Requirements: Python 3.8+ with Tkinter (included in most Python distributions).
+
 ## Tests, Lints, Benchmarks
 ```bash
 cargo test --release
 ./check  # lints
 cargo bench
 ```
+
+## Troubleshooting
+
+**Node won't start:**
+- Ensure ports 26110-26111 (mainnet) or 26210-26211 (testnet) are not in use.
+- Check file descriptor limits: `ulimit -n 4096`
+
+**Mining not working:**
+- Verify the node is running with `--utxoindex --enable-unsynced-mining` for local testing.
+- Ensure the bridge is connecting to the correct gRPC port (default: 26110).
+
+**Wallet connection issues:**
+- Confirm the node has `--utxoindex` enabled (required for wallet operations).
+- Check that wRPC is enabled if using remote connections.
+
+**Build errors:**
+- Ensure `protoc` (protobuf compiler) is installed and in PATH.
+- On Windows, verify LLVM `bin` directory is in PATH.
+
+## License
+
+ISC License. See [LICENSE](LICENSE) for details.
 
 ---
 by: cadaritre
