@@ -77,3 +77,7 @@ coverage/
 
 # Local agent rules
 agent-rules.local.md
+
+# Python cache artifacts
+__pycache__/
+*.pyc

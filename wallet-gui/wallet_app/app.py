@@ -4,204 +4,330 @@ import re
 import threading
 import tkinter as tk
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable
 from tkinter import filedialog, ttk
 
 from .cli_bridge import launch_interactive, run_capture
-from .config import DEFAULT_NETWORK, NETWORK_CHOICES, load_config, resolve_cli_binary, save_config
+from .config import DEFAULT_NETWORK, NETWORK_CHOICES, load_config, save_config
+from .history import HistoryPanel, HistoryStore
+from .state import WalletState
 from .ui_components import AnimatedButton
+from .validators import parse_nonnegative_fee, parse_positive_amount, validate_address
 
-MIN_ADDRESS_LEN = 24
+ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
-BECH32_CHARS = set("023456789acdefghjklmnpqrstuvwxyz")
-NETWORK_PREFIX = {
-    "mainnet": "lmt",
-    "testnet-10": "lmttest",
-    "testnet-11": "lmttest",
-}
 
 
 class WalletGui(tk.Tk):
-    BG = "#0f111a"
-    PANEL = "#171b2b"
-    INPUT_BG = "#22283d"
-    TEXT_BG = "#121829"
-    FG = "#ecf1ff"
-    MUTED = "#9aa8ca"
-    SUCCESS = "#2ac98c"
-    ERROR = "#ff5f7a"
+    BG = "#f2f4f8"
+    PANEL = "#ffffff"
+    INPUT_BG = "#eaecf2"
+    TEXT_BG = "#fafbfe"
+    FG = "#1a2138"
+    MUTED = "#6b7a94"
+    BLUE = "#2563eb"
+    BLUE_LIGHT = "#dbeafe"
+    BLUE_DARK = "#1d4ed8"
+    ORANGE = "#d97706"
+    ORANGE_LIGHT = "#fef3c7"
+    SUCCESS = "#16a34a"
+    ERROR = "#dc2626"
+    BORDER = "#dce1ea"
+    GROUP_BG = "#f7f8fc"
 
     def __init__(self) -> None:
         super().__init__()
         self.config_data = load_config()
         self.action_buttons: list[AnimatedButton] = []
-        self._busy = False
         self.send_modal: tk.Toplevel | None = None
         self.transfer_modal: tk.Toplevel | None = None
         self.account_suggestions: list[str] = []
-        self.title("Lapis Monetae Wallet Launcher")
-        self.geometry("1020x700")
-        self.minsize(920, 620)
+
+        self.ws = WalletState(network=self.config_data.get("network", DEFAULT_NETWORK))
+        self.ws.refresh_cli(self.config_data)
+        self.ws.add_listener(self._on_state_change)
+
+        self.history_store = HistoryStore()
+        self.history_panel: HistoryPanel | None = None
+
+        self.title("Lapis Monetae Wallet")
+        self.geometry("1050x780")
+        self.minsize(640, 480)
         self.configure(bg=self.BG)
+        self._set_window_icon()
         self._build_style()
         self._build_layout()
-        self.refresh_cli_status()
-        self.log("GUI ready. Configure CLI and network, then run an action.")
+        self._sync_ui_to_state()
+        self.log("Welcome to Lapis Monetae Wallet. Configure CLI and network, then run an action.")
+        self.history_store.add("system", "GUI started", "ok")
+        if self.history_panel:
+            self.history_panel.refresh()
+
+    # ── Window icon ──
+
+    def _set_window_icon(self) -> None:
+        ico_path = ASSETS_DIR / "lmt_icon.ico"
+        png_path = ASSETS_DIR / "lmt_icon_64.png"
+        try:
+            self.iconbitmap(str(ico_path))
+        except tk.TclError:
+            try:
+                icon_img = tk.PhotoImage(file=str(png_path))
+                self.iconphoto(True, icon_img)
+                self._icon_ref = icon_img
+            except tk.TclError:
+                pass
+
+    # ── Style ──
 
     def _build_style(self) -> None:
         style = ttk.Style(self)
         style.theme_use("clam")
         style.configure(
-            "Dark.TCombobox",
-            fieldbackground=self.INPUT_BG,
-            background=self.INPUT_BG,
-            foreground=self.FG,
-            arrowcolor=self.FG,
-            bordercolor=self.INPUT_BG,
-            lightcolor=self.INPUT_BG,
-            darkcolor=self.INPUT_BG,
+            "Light.TCombobox",
+            fieldbackground=self.INPUT_BG, background="#ffffff",
+            foreground=self.FG, arrowcolor=self.MUTED,
+            bordercolor=self.BORDER, lightcolor="#ffffff", darkcolor=self.BORDER,
+            selectbackground=self.BLUE, selectforeground="#ffffff",
         )
+        style.map(
+            "Light.TCombobox",
+            fieldbackground=[("readonly", self.INPUT_BG)],
+            foreground=[("readonly", self.FG)],
+            bordercolor=[("focus", self.BLUE)],
+        )
+
+    # ── Layout ──
 
     def _build_layout(self) -> None:
-        outer = tk.Frame(self, bg=self.BG, padx=18, pady=18)
+        outer = tk.Frame(self, bg=self.BG, padx=16, pady=10)
         outer.pack(fill="both", expand=True)
 
-        header = tk.Frame(outer, bg=self.BG)
-        header.pack(fill="x", pady=(0, 12))
-        tk.Label(
-            header,
-            text="Lapis Monetae Wallet",
-            bg=self.BG,
-            fg=self.FG,
-            font=("Segoe UI Semibold", 22),
-        ).pack(anchor="w")
-        tk.Label(
-            header,
-            text="Phase 2 - Structured dark mode GUI",
-            bg=self.BG,
-            fg=self.MUTED,
-            font=("Segoe UI", 10),
-        ).pack(anchor="w", pady=(2, 0))
-        self.pill_status = tk.Label(
-            header,
-            text=" READY ",
-            bg="#1f2740",
-            fg="#c9d8ff",
-            font=("Segoe UI Semibold", 9),
-            padx=10,
-            pady=4,
-        )
-        self.pill_status.pack(anchor="e", pady=(0, 2))
+        self._build_header(outer)
+        self._build_config_panel(outer)
+        self._build_status_row(outer)
+        self._build_action_buttons(outer)
+        self._build_output_and_history(outer)
 
-        top_shell = tk.Frame(outer, bg="#0c0f18", padx=1, pady=1)
-        top_shell.pack(fill="x")
-        top_panel = tk.Frame(top_shell, bg=self.PANEL, padx=14, pady=14)
+    def _build_header(self, parent: tk.Frame) -> None:
+        header = tk.Frame(parent, bg=self.BG)
+        header.pack(fill="x", pady=(0, 2))
+        title_row = tk.Frame(header, bg=self.BG)
+        title_row.pack(fill="x")
+
+        header_png = ASSETS_DIR / "lmt_header.png"
+        try:
+            self._header_logo = tk.PhotoImage(file=str(header_png))
+            tk.Label(title_row, image=self._header_logo, bg=self.BG).pack(side="left", padx=(0, 10))
+        except tk.TclError:
+            pass
+
+        tk.Label(title_row, text="Lapis Monetae Wallet", bg=self.BG, fg=self.FG,
+                 font=("Segoe UI Semibold", 18)).pack(side="left")
+        self.pill_status = tk.Label(title_row, text=" \u25CF  READY ", bg=self.BLUE_LIGHT,
+                                    fg=self.BLUE, font=("Segoe UI Semibold", 8), padx=10, pady=3)
+        self.pill_status.pack(side="right")
+
+        accent_line = tk.Canvas(parent, bg=self.BG, height=2, highlightthickness=0, bd=0)
+        accent_line.pack(fill="x", pady=(2, 6))
+        accent_line.bind("<Configure>", lambda e: self._draw_gradient_line(accent_line, e.width))
+
+    def _build_config_panel(self, parent: tk.Frame) -> None:
+        top_panel = tk.Frame(parent, bg=self.PANEL, padx=12, pady=8,
+                             highlightbackground=self.BORDER, highlightthickness=1)
         top_panel.pack(fill="x")
 
-        tk.Label(top_panel, text="CLI path", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10)).grid(row=0, column=0, sticky="w")
+        # ── Row 1: CLI path ──
+        row1 = tk.Frame(top_panel, bg=self.PANEL)
+        row1.pack(fill="x", pady=(0, 6))
+        tk.Label(row1, text="CLI Path", bg=self.PANEL, fg=self.MUTED,
+                 font=("Segoe UI", 9)).pack(anchor="w")
+        entry_row = tk.Frame(row1, bg=self.PANEL)
+        entry_row.pack(fill="x")
         self.cli_path_var = tk.StringVar(value=self.config_data.get("cli_path", ""))
-        tk.Entry(
-            top_panel,
-            textvariable=self.cli_path_var,
-            bg=self.INPUT_BG,
-            fg=self.FG,
-            insertbackground=self.FG,
-            relief="flat",
-            font=("Consolas", 10),
-        ).grid(row=1, column=0, sticky="ew", padx=(0, 8), ipady=8)
+        tk.Entry(entry_row, textvariable=self.cli_path_var, bg=self.INPUT_BG, fg=self.FG,
+                 insertbackground=self.FG, relief="flat", font=("Consolas", 9),
+                 highlightthickness=1, highlightcolor=self.BLUE,
+                 highlightbackground=self.BORDER).pack(side="left", fill="x", expand=True, ipady=5, padx=(0, 6))
+        AnimatedButton(entry_row, text="\u2026 Browse", command=self.on_browse_cli,
+                       base_bg="#edf0f7", hover_bg=self.BLUE, border_color=self.BORDER, height=32,
+                       ).pack(side="left", padx=(0, 4))
+        AnimatedButton(entry_row, text="\u2713 Save", command=self.on_save_cli_path,
+                       base_bg="#edf0f7", hover_bg="#16a34a", border_color=self.BORDER, height=32,
+                       ).pack(side="left")
 
-        AnimatedButton(top_panel, text="Browse", command=self.on_browse_cli).grid(row=1, column=1, padx=(0, 8))
-        AnimatedButton(top_panel, text="Save", command=self.on_save_cli_path, base_bg="#2f3653", hover_bg="#4b57a3").grid(row=1, column=2)
+        # ── Row 2: Network + Wallet name ──
+        row2 = tk.Frame(top_panel, bg=self.PANEL)
+        row2.pack(fill="x")
 
-        tk.Label(top_panel, text="Network", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10)).grid(row=0, column=3, sticky="w", padx=(18, 0))
-        self.network_var = tk.StringVar(value=self.config_data.get("network", DEFAULT_NETWORK))
-        network_box = ttk.Combobox(
-            top_panel,
-            values=NETWORK_CHOICES,
-            textvariable=self.network_var,
-            state="readonly",
-            style="Dark.TCombobox",
-            width=12,
-        )
-        network_box.grid(row=1, column=3, sticky="w", padx=(18, 0), ipady=4)
+        net_frame = tk.Frame(row2, bg=self.PANEL)
+        net_frame.pack(side="left", fill="x", padx=(0, 12))
+        tk.Label(net_frame, text="Network", bg=self.PANEL, fg=self.MUTED,
+                 font=("Segoe UI", 9)).pack(anchor="w")
+        self.network_var = tk.StringVar(value=self.ws.network)
+        network_box = ttk.Combobox(net_frame, values=NETWORK_CHOICES, textvariable=self.network_var,
+                                   state="readonly", style="Light.TCombobox", width=12)
+        network_box.pack(anchor="w", ipady=2)
         network_box.bind("<<ComboboxSelected>>", lambda _e: self.on_network_change())
 
-        tk.Label(top_panel, text="Wallet name (optional)", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10)).grid(row=0, column=4, sticky="w", padx=(18, 0))
+        wallet_frame = tk.Frame(row2, bg=self.PANEL)
+        wallet_frame.pack(side="left", fill="x", expand=True)
+        tk.Label(wallet_frame, text="Wallet Name (optional)", bg=self.PANEL, fg=self.MUTED,
+                 font=("Segoe UI", 9)).pack(anchor="w")
         self.wallet_name_var = tk.StringVar(value=self.config_data.get("last_wallet", ""))
-        tk.Entry(
-            top_panel,
-            textvariable=self.wallet_name_var,
-            bg=self.INPUT_BG,
-            fg=self.FG,
-            insertbackground=self.FG,
-            relief="flat",
-            font=("Segoe UI", 10),
-            width=22,
-        ).grid(row=1, column=4, sticky="w", padx=(18, 0), ipady=8)
-        top_panel.grid_columnconfigure(0, weight=1)
+        tk.Entry(wallet_frame, textvariable=self.wallet_name_var, bg=self.INPUT_BG, fg=self.FG,
+                 insertbackground=self.FG, relief="flat", font=("Segoe UI", 9),
+                 highlightthickness=1, highlightcolor=self.BLUE,
+                 highlightbackground=self.BORDER).pack(fill="x", ipady=5)
 
-        self.status_var = tk.StringVar(value="CLI: unresolved")
-        tk.Label(outer, textvariable=self.status_var, bg=self.BG, fg=self.MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(10, 8))
+    def _build_status_row(self, parent: tk.Frame) -> None:
+        self.status_var = tk.StringVar()
+        row = tk.Frame(parent, bg=self.BG)
+        row.pack(fill="x", pady=(4, 4))
+        tk.Label(row, textvariable=self.status_var, bg=self.BG, fg=self.MUTED,
+                 font=("Consolas", 8)).pack(side="left")
 
-        actions_shell = tk.Frame(outer, bg="#0c0f18", padx=1, pady=1)
-        actions_shell.pack(fill="x", pady=(0, 12))
-        actions = tk.Frame(actions_shell, bg=self.PANEL, padx=10, pady=10)
-        actions.pack(fill="x")
+    def _build_action_buttons(self, parent: tk.Frame) -> None:
+        actions_panel = tk.Frame(parent, bg=self.PANEL, padx=10, pady=8,
+                                 highlightbackground=self.BORDER, highlightthickness=1)
+        actions_panel.pack(fill="x", pady=(0, 6))
 
-        row1 = tk.Frame(actions, bg=self.PANEL)
-        row1.pack(fill="x", pady=(0, 8))
-        row2 = tk.Frame(actions, bg=self.PANEL)
-        row2.pack(fill="x")
-        row3 = tk.Frame(actions, bg=self.PANEL)
-        row3.pack(fill="x")
+        self._build_button_row(actions_panel, "\u26BF Wallet", self.BLUE, [
+            ("\u2726 Create", self.action_create, self.BLUE),
+            ("\u2B07 Import", self.action_import, "#3b82f6"),
+            ("\u2750 Open", self.action_open, "#2563eb"),
+            ("\u21BA Open Last", self.action_open_last_wallet, "#1d4ed8"),
+        ])
+        self._build_button_row(actions_panel, "\u2637 Accounts", "#0891b2", [
+            ("\u2630 List", lambda: self._guarded_capture(["wallet", "list"], "wallet", "Wallet list"), "#0891b2"),
+            ("\u2261 Balances", self.action_list_balances, "#0e7490"),
+            ("\u2316 Address", lambda: self._guarded_capture(["address"], "address", "Show address"), "#0d9488"),
+            ("\u271A New Addr", lambda: self._guarded_capture(["address", "new"], "address", "Generate new address"), "#059669"),
+        ])
+        self._build_button_row(actions_panel, "\u26A1 Transactions", self.ORANGE, [
+            ("\u27A4 Send", self.open_send_modal, "#d97706"),
+            ("\u21C4 Transfer", self.open_transfer_modal, "#ea580c"),
+            ("\u21BB Refresh", self.refresh_account_suggestions, "#ca8a04"),
+            ("\u2715 Clear", self.clear_output, "#9333ea"),
+        ])
 
-        self._add_action_button(row1, 0, "Create Wallet", self.action_create, "#465bff")
-        self._add_action_button(row1, 1, "Import Wallet", self.action_import, "#4f67ff")
-        self._add_action_button(row1, 2, "Open Wallet", self.action_open, "#5a72ff")
-        self._add_action_button(row1, 3, "Open Last Wallet", self.action_open_last_wallet, "#3f7bff")
-        self._add_action_button(row2, 0, "Wallet List", lambda: self.run_capture_action(["wallet", "list"]), "#2f9df0")
-        self._add_action_button(row2, 1, "Show Address", lambda: self.run_capture_action(["address"]), "#27bb9c")
-        self._add_action_button(row2, 2, "New Address", lambda: self.run_capture_action(["address", "new"]), "#31c27b")
-        self._add_action_button(row2, 3, "Accounts/Balances", self.action_list_balances, "#1fa9cc")
-        self._add_action_button(row3, 0, "Send LMT", self.open_send_modal, "#c056ff")
-        self._add_action_button(row3, 1, "Transfer Between Accounts", self.open_transfer_modal, "#f27767")
-        self._add_action_button(row3, 2, "Refresh Account Suggestions", self.refresh_account_suggestions, "#f0a340")
-        self._add_action_button(row3, 3, "Clear Output", self.clear_output, "#7d4df2")
-        for col in range(4):
-            row1.grid_columnconfigure(col, weight=1)
-            row2.grid_columnconfigure(col, weight=1)
-            row3.grid_columnconfigure(col, weight=1)
+    def _build_output_and_history(self, parent: tk.Frame) -> None:
+        """Output log and history in a tabbed Notebook — never hidden."""
+        style = ttk.Style()
+        style.configure("Bottom.TNotebook", background=self.BG, borderwidth=0)
+        style.configure("Bottom.TNotebook.Tab", font=("Segoe UI Semibold", 9),
+                        padding=[12, 4], background=self.BG, foreground=self.MUTED)
+        style.map("Bottom.TNotebook.Tab",
+                  background=[("selected", self.PANEL)],
+                  foreground=[("selected", self.BLUE)])
 
-        output_shell = tk.Frame(outer, bg="#0c0f18", padx=1, pady=1)
-        output_shell.pack(fill="both", expand=True)
-        output_panel = tk.Frame(output_shell, bg=self.PANEL, padx=12, pady=10)
-        output_panel.pack(fill="both", expand=True)
-        tk.Label(output_panel, text="Command Output", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI Semibold", 10)).pack(anchor="w", pady=(0, 6))
+        notebook = ttk.Notebook(parent, style="Bottom.TNotebook")
+        notebook.pack(fill="both", expand=True)
 
-        self.output = tk.Text(
-            output_panel,
-            bg=self.TEXT_BG,
-            fg="#dbe4ff",
-            insertbackground=self.FG,
-            relief="flat",
-            wrap="word",
-            font=("Consolas", 10),
-            padx=12,
-            pady=10,
-        )
+        # ── Tab 1: Command Output ──
+        output_frame = tk.Frame(notebook, bg=self.PANEL, padx=10, pady=8)
+        out_header = tk.Frame(output_frame, bg=self.PANEL)
+        out_header.pack(fill="x", pady=(0, 4))
+        self.line_count_var = tk.StringVar(value="0 lines")
+        tk.Label(out_header, textvariable=self.line_count_var, bg=self.PANEL, fg="#a0aab8",
+                 font=("Consolas", 8)).pack(side="right")
+
+        text_border = tk.Frame(output_frame, bg=self.BORDER, padx=1, pady=1)
+        text_border.pack(fill="both", expand=True)
+        y_scroll = tk.Scrollbar(text_border, orient="vertical")
+        y_scroll.pack(side="right", fill="y")
+        x_scroll = tk.Scrollbar(text_border, orient="horizontal")
+        x_scroll.pack(side="bottom", fill="x")
+        self.output = tk.Text(text_border, bg=self.TEXT_BG, fg="#334155",
+                              insertbackground=self.FG, relief="flat", wrap="none",
+                              font=("Consolas", 9), padx=10, pady=8,
+                              yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set,
+                              borderwidth=0, selectbackground=self.BLUE_LIGHT,
+                              selectforeground=self.FG)
         self.output.pack(fill="both", expand=True)
-        self.output.tag_configure("ts", foreground="#7f95c7")
+        y_scroll.config(command=self.output.yview)
+        x_scroll.config(command=self.output.xview)
+        self.output.tag_configure("ts", foreground=self.BLUE)
+        self.output.tag_configure("err", foreground=self.ERROR)
+        self.output.tag_configure("ok", foreground=self.SUCCESS)
+        self.output.config(state="disabled")
+        notebook.add(output_frame, text=" \u2630  Output ")
 
-    def _add_action_button(self, parent: tk.Frame, col: int, text: str, command: Any, hover: str) -> None:
-        btn = AnimatedButton(parent, text=text, command=command, hover_bg=hover)
-        btn.grid(row=0, column=col, padx=6, pady=6, sticky="ew")
-        self.action_buttons.append(btn)
+        # ── Tab 2: Operation History ──
+        history_frame = tk.Frame(notebook, bg=self.BG)
+        self.history_panel = HistoryPanel(history_frame, self.history_store)
+        notebook.add(history_frame, text=" \u2637  History ")
+
+    # ── Widget helpers ──
+
+    def _draw_gradient_line(self, canvas: tk.Canvas, width: int) -> None:
+        canvas.delete("all")
+        if width < 2:
+            return
+        colors = [self.BLUE, "#6366f1", self.ORANGE, self.BLUE]
+        segments = len(colors) - 1
+        seg_w = max(width / segments, 1)
+        for i in range(segments):
+            canvas.create_rectangle(int(i * seg_w), 0, int((i + 1) * seg_w), 2,
+                                    fill=colors[i], outline=colors[i + 1])
+
+    def _build_button_row(self, parent: tk.Frame, title: str, accent: str,
+                          buttons: list[tuple[str, Any, str]]) -> None:
+        row = tk.Frame(parent, bg=self.GROUP_BG, padx=4, pady=3,
+                       highlightbackground=self.BORDER, highlightthickness=1)
+        row.pack(fill="x", pady=2)
+
+        title_bar = tk.Frame(row, bg=self.GROUP_BG)
+        title_bar.pack(fill="x", pady=(0, 3))
+        dot = tk.Canvas(title_bar, width=8, height=8, bg=self.GROUP_BG, highlightthickness=0, bd=0)
+        dot.pack(side="left", padx=(2, 4))
+        dot.create_oval(1, 1, 7, 7, fill=accent, outline=accent)
+        tk.Label(title_bar, text=title, bg=self.GROUP_BG, fg=accent,
+                 font=("Segoe UI Semibold", 9)).pack(side="left")
+
+        btn_grid = tk.Frame(row, bg=self.GROUP_BG)
+        btn_grid.pack(fill="x")
+        for i, (label, command, hover) in enumerate(buttons):
+            btn_grid.grid_columnconfigure(i, weight=1, uniform="btn")
+            btn = AnimatedButton(btn_grid, text=label, command=command, base_bg="#edf0f7",
+                                 hover_bg=hover, border_color=self.BORDER, fg="#1e293b",
+                                 hover_fg="#ffffff", height=32)
+            btn.grid(row=0, column=i, padx=2, pady=1, sticky="ew")
+            self.action_buttons.append(btn)
+
+    # ── State synchronisation ──
+
+    def _on_state_change(self) -> None:
+        self.after(0, self._sync_ui_to_state)
+
+    def _sync_ui_to_state(self) -> None:
+        self.status_var.set(f"\u25B8 {self.ws.status_text()}")
+        text, bg, fg = self.ws.pill_info()
+        self.pill_status.config(text=text, bg=bg, fg=fg)
+        btn_state = "disabled" if self.ws.busy else "normal"
+        for btn in self.action_buttons:
+            btn.config(state=btn_state)
+
+    # ── Logging ──
 
     def log(self, text: str) -> None:
         ts = datetime.now().strftime("%H:%M:%S")
+        self.output.config(state="normal")
         self.output.insert("end", f"[{ts}] ", ("ts",))
-        self.output.insert("end", text.rstrip() + "\n")
+        stripped = text.rstrip()
+        tag: tuple[str, ...] = ()
+        if stripped.startswith("ERROR") or "[stderr]" in stripped:
+            tag = ("err",)
+        elif "Exit code: 0" in stripped:
+            tag = ("ok",)
+        self.output.insert("end", stripped + "\n", tag)
         self.output.see("end")
+        self.output.config(state="disabled")
+        lines = int(self.output.index("end-1c").split(".")[0])
+        self.line_count_var.set(f"{lines} lines")
+
+    # ── CLI configuration ──
 
     def on_browse_cli(self) -> None:
         path = filedialog.askopenfilename(title="Select CLI binary")
@@ -211,9 +337,10 @@ class WalletGui(tk.Tk):
     def on_save_cli_path(self) -> None:
         self.config_data["cli_path"] = self.cli_path_var.get().strip()
         save_config(self.config_data)
-        self.refresh_cli_status()
+        self.ws.refresh_cli(self.config_data)
         self.log("CLI path saved.")
         self.toast("CLI path saved", "ok")
+        self.history_panel and self.history_panel.add_and_refresh("system", "CLI path saved", "ok")
 
     def _save_last_wallet(self, wallet_name: str) -> None:
         normalized = wallet_name.strip()
@@ -223,70 +350,84 @@ class WalletGui(tk.Tk):
         save_config(self.config_data)
 
     def on_network_change(self) -> None:
-        self.config_data["network"] = self.network_var.get().strip() or DEFAULT_NETWORK
+        net = self.network_var.get().strip() or DEFAULT_NETWORK
+        self.config_data["network"] = net
         save_config(self.config_data)
-        self.log(f"Network saved: {self.config_data['network']}")
-        self.toast(f"Active network: {self.config_data['network']}", "info")
+        self.ws.set_network(net)
+        self.log(f"Network saved: {net}")
+        self.toast(f"Active network: {net}", "info")
+        self.history_panel and self.history_panel.add_and_refresh("network", f"Network changed to {net}", "ok")
 
-    def refresh_cli_status(self) -> None:
-        binary = resolve_cli_binary(self.config_data)
-        if binary:
-            self.status_var.set(f"CLI: {binary} | Network: {self.config_data.get('network', DEFAULT_NETWORK)}")
-            self._set_pill(" READY ", "#1f2740", "#c9d8ff")
-        else:
-            self.status_var.set(f"CLI: not found | Network: {self.config_data.get('network', DEFAULT_NETWORK)}")
-            self._set_pill(" CLI MISSING ", "#3a1f2a", "#ffd0d9")
+    # ── Guarded action runners ──
 
-    def require_cli(self) -> str | None:
-        self.refresh_cli_status()
-        binary = resolve_cli_binary(self.config_data)
-        if not binary:
+    def _require_cli(self) -> str | None:
+        self.ws.refresh_cli(self.config_data)
+        if not self.ws.cli_available:
             self.log("ERROR: CLI binary not found. Set a path or define LMT_CLI_BIN.")
             self.toast("CLI was not found", "error")
             return None
-        return binary
+        return self.ws.cli_binary
+
+    def _guarded_capture(self, args: list[str], category: str, description: str,
+                         ensure_network: bool = False) -> None:
+        ok, reason = self.ws.can_run_action()
+        if not ok:
+            self.toast(reason, "info")
+            return
+        self.history_panel and self.history_panel.add_and_refresh(category, description, "pending")  # type: ignore[arg-type]
+        self.run_capture_action(args, ensure_network=ensure_network)
 
     def run_capture_action(self, args: list[str], ensure_network: bool = False) -> None:
-        if self._busy:
-            self.toast("Please wait for the current command to finish", "info")
-            return
-        binary = self.require_cli()
+        binary = self._require_cli()
         if not binary:
             return
-
-        self._set_busy(True)
+        self.ws.set_busy(True)
 
         def worker() -> None:
             if ensure_network:
-                net_code, net_out = run_capture(binary, ["network", self.config_data.get("network", DEFAULT_NETWORK)])
+                net_code, net_out = run_capture(binary, ["network", self.ws.network])
                 self.after(0, lambda: self.log(net_out))
                 if net_code != 0:
                     self.after(0, lambda: self.toast("Failed to select network", "error"))
-                    self.after(0, lambda: self._set_busy(False))
+                    self.after(0, lambda: self._finish_action("error", "Network selection failed"))
                     return
             code, out = run_capture(binary, args)
             self.after(0, lambda: self.log(out))
             self.after(0, lambda: self.log(f"Exit code: {code}\n"))
-            self.after(0, lambda: self.toast("Command completed", "ok" if code == 0 else "error"))
-            self.after(0, lambda: self._set_busy(False))
+            status = "ok" if code == 0 else "error"
+            self.after(0, lambda: self.toast("Command completed", status))
+            self.after(0, lambda: self._finish_action(status, f"Exit code: {code}"))
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def run_interactive_action(self, args: list[str]) -> None:
-        if self._busy:
-            self.toast("Please wait for the current command to finish", "info")
+    def _finish_action(self, status: str, detail: str = "") -> None:
+        self.ws.set_busy(False)
+        if self.history_panel:
+            self.history_panel.update_last_and_refresh(status, detail)  # type: ignore[arg-type]
+
+    def run_interactive_action(self, args: list[str], category: str = "wallet",
+                               description: str = "Interactive command") -> None:
+        ok, reason = self.ws.can_run_action()
+        if not ok:
+            self.toast(reason, "info")
             return
-        binary = self.require_cli()
+        binary = self._require_cli()
         if not binary:
             return
 
-        self.run_capture_action(["network", self.config_data.get("network", DEFAULT_NETWORK)], ensure_network=False)
-        ok, message = launch_interactive(binary, args)
+        self.run_capture_action(["network", self.ws.network], ensure_network=False)
+        launched, message = launch_interactive(binary, args)
         self.log(message)
+        status = "ok" if launched else "error"
         self.toast(
-            "Interactive command launched" if ok else "Error opening interactive console",
-            "info" if ok else "error",
+            "Interactive command launched" if launched else "Error opening interactive console",
+            "info" if launched else "error",
         )
+        self.history_panel and self.history_panel.add_and_refresh(
+            category, description, status, message,  # type: ignore[arg-type]
+        )
+
+    # ── Wallet actions ──
 
     def _wallet_name(self) -> str:
         return self.wallet_name_var.get().strip()
@@ -297,7 +438,7 @@ class WalletGui(tk.Tk):
         if name:
             args.append(name)
             self._save_last_wallet(name)
-        self.run_interactive_action(args)
+        self.run_interactive_action(args, "wallet", f"Create wallet{f' ({name})' if name else ''}")
 
     def action_import(self) -> None:
         args = ["wallet", "import"]
@@ -305,7 +446,7 @@ class WalletGui(tk.Tk):
         if name:
             args.append(name)
             self._save_last_wallet(name)
-        self.run_interactive_action(args)
+        self.run_interactive_action(args, "wallet", f"Import wallet{f' ({name})' if name else ''}")
 
     def action_open(self) -> None:
         args = ["wallet", "open"]
@@ -313,7 +454,8 @@ class WalletGui(tk.Tk):
         if name:
             args.append(name)
             self._save_last_wallet(name)
-        self.run_interactive_action(args)
+            self.ws.open_wallet(name)
+        self.run_interactive_action(args, "wallet", f"Open wallet{f' ({name})' if name else ''}")
 
     def action_open_last_wallet(self) -> None:
         last_wallet = str(self.config_data.get("last_wallet", "")).strip()
@@ -321,135 +463,206 @@ class WalletGui(tk.Tk):
             self.toast("No last wallet is saved yet", "info")
             return
         self.wallet_name_var.set(last_wallet)
-        self.run_interactive_action(["wallet", "open", last_wallet])
+        self.ws.open_wallet(last_wallet)
+        self.run_interactive_action(["wallet", "open", last_wallet], "wallet",
+                                    f"Open last wallet ({last_wallet})")
 
     def action_list_balances(self) -> None:
-        self.run_capture_action(["list"], ensure_network=True)
+        self._guarded_capture(["list"], "wallet", "List account balances", ensure_network=True)
+
+    # ── Send modal ──
 
     def open_send_modal(self) -> None:
+        ok, reason = self.ws.can_send()
+        if not ok:
+            self.toast(reason, "info")
+            return
         if self.send_modal and self.send_modal.winfo_exists():
             self.send_modal.focus_force()
             return
-        modal = self._create_modal("Send LMT")
+        modal = self._create_modal("\u27A4  Send LMT", accent=self.ORANGE)
         self.send_modal = modal
-
-        content = tk.Frame(modal, bg=self.PANEL, padx=14, pady=12)
+        content = tk.Frame(modal, bg=self.PANEL, padx=20, pady=14)
         content.pack(fill="both", expand=True)
 
         recipient_var = tk.StringVar()
         amount_var = tk.StringVar()
         fee_var = tk.StringVar(value="0")
-
         self._labeled_entry(content, 0, "Recipient address", recipient_var)
         self._labeled_entry(content, 1, "Amount (LMT)", amount_var)
         self._labeled_entry(content, 2, "Priority fee (LMT, optional)", fee_var)
 
         footer = tk.Frame(content, bg=self.PANEL)
-        footer.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        footer.grid(row=3, column=0, sticky="ew", pady=(14, 0))
         footer.grid_columnconfigure(0, weight=1)
         footer.grid_columnconfigure(1, weight=1)
-        AnimatedButton(footer, text="Cancel", command=modal.destroy, base_bg="#334", hover_bg="#445").grid(row=0, column=0, padx=(0, 6), sticky="ew")
-        AnimatedButton(
-            footer,
-            text="Confirm and Send",
-            command=lambda: self._submit_send(recipient_var.get(), amount_var.get(), fee_var.get(), modal),
-            base_bg="#6c2cff",
-            hover_bg="#8749ff",
-        ).grid(row=0, column=1, padx=(6, 0), sticky="ew")
+        AnimatedButton(footer, text="\u2715  Cancel", command=modal.destroy,
+                       base_bg="#f1f5f9", hover_bg="#94a3b8", border_color=self.BORDER
+                       ).grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        AnimatedButton(footer, text="\u27A4  Confirm & Send",
+                       command=lambda: self._submit_send(recipient_var.get(), amount_var.get(), fee_var.get(), modal),
+                       base_bg=self.ORANGE_LIGHT, hover_bg=self.ORANGE, border_color="#fbbf24", fg="#92400e",
+                       ).grid(row=0, column=1, padx=(6, 0), sticky="ew")
+
+    # ── Transfer modal ──
 
     def open_transfer_modal(self) -> None:
+        ok, reason = self.ws.can_send()
+        if not ok:
+            self.toast(reason, "info")
+            return
         if self.transfer_modal and self.transfer_modal.winfo_exists():
             self.transfer_modal.focus_force()
             return
-        modal = self._create_modal("Transfer Between Accounts")
+        modal = self._create_modal("\u21C4  Transfer Between Accounts", accent=self.BLUE)
         self.transfer_modal = modal
-
-        content = tk.Frame(modal, bg=self.PANEL, padx=14, pady=12)
+        content = tk.Frame(modal, bg=self.PANEL, padx=20, pady=14)
         content.pack(fill="both", expand=True)
 
         account_var = tk.StringVar()
         amount_var = tk.StringVar()
         fee_var = tk.StringVar(value="0")
-
         self._labeled_combo(content, 0, "Target account (name or id)", account_var, self.account_suggestions)
         self._labeled_entry(content, 1, "Amount (LMT)", amount_var)
         self._labeled_entry(content, 2, "Priority fee (LMT, optional)", fee_var)
 
         footer = tk.Frame(content, bg=self.PANEL)
-        footer.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        footer.grid(row=3, column=0, sticky="ew", pady=(14, 0))
         footer.grid_columnconfigure(0, weight=1)
         footer.grid_columnconfigure(1, weight=1)
-        AnimatedButton(footer, text="Cancel", command=modal.destroy, base_bg="#334", hover_bg="#445").grid(row=0, column=0, padx=(0, 6), sticky="ew")
-        AnimatedButton(
-            footer,
-            text="Confirm and Transfer",
-            command=lambda: self._submit_transfer(account_var.get(), amount_var.get(), fee_var.get(), modal),
-            base_bg="#df5a45",
-            hover_bg="#f27767",
-        ).grid(row=0, column=1, padx=(6, 0), sticky="ew")
+        AnimatedButton(footer, text="\u2715  Cancel", command=modal.destroy,
+                       base_bg="#f1f5f9", hover_bg="#94a3b8", border_color=self.BORDER
+                       ).grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        AnimatedButton(footer, text="\u21C4  Confirm & Transfer",
+                       command=lambda: self._submit_transfer(account_var.get(), amount_var.get(), fee_var.get(), modal),
+                       base_bg=self.BLUE_LIGHT, hover_bg=self.BLUE, border_color="#93c5fd", fg="#1e3a5f",
+                       ).grid(row=0, column=1, padx=(6, 0), sticky="ew")
 
         if not self.account_suggestions:
             self.refresh_account_suggestions(silent=True)
 
-    def _create_modal(self, title: str) -> tk.Toplevel:
+    # ── Modal / form helpers ──
+
+    def _create_modal(self, title: str, accent: str = "#2563eb") -> tk.Toplevel:
         modal = tk.Toplevel(self)
         modal.title(title)
-        modal.configure(bg="#0c0f18")
+        modal.configure(bg=self.BG)
         modal.transient(self)
         modal.grab_set()
-        modal.geometry("520x300")
+        modal.geometry("560x360")
         modal.resizable(False, False)
+        tk.Frame(modal, bg=accent, height=4).pack(fill="x")
+        title_frame = tk.Frame(modal, bg=self.PANEL, padx=20, pady=12)
+        title_frame.pack(fill="x")
+        tk.Label(title_frame, text=title, bg=self.PANEL, fg=self.FG,
+                 font=("Segoe UI Semibold", 14)).pack(side="left")
+        close_btn = tk.Label(title_frame, text="\u2715", bg=self.PANEL, fg=self.MUTED,
+                             font=("Segoe UI", 12), cursor="hand2")
+        close_btn.pack(side="right")
+        close_btn.bind("<Button-1>", lambda _: modal.destroy())
+        close_btn.bind("<Enter>", lambda _: close_btn.config(fg=self.ERROR))
+        close_btn.bind("<Leave>", lambda _: close_btn.config(fg=self.MUTED))
+        tk.Frame(modal, bg=self.BORDER, height=1).pack(fill="x")
         return modal
 
     def _labeled_entry(self, parent: tk.Frame, row: int, label: str, variable: tk.StringVar) -> None:
         frame = tk.Frame(parent, bg=self.PANEL)
-        frame.grid(row=row, column=0, sticky="ew", pady=6)
-        tk.Label(frame, text=label, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 4))
-        tk.Entry(
-            frame,
-            textvariable=variable,
-            bg=self.INPUT_BG,
-            fg=self.FG,
-            insertbackground=self.FG,
-            relief="flat",
-            font=("Consolas", 11),
-        ).pack(fill="x", ipady=8)
+        frame.grid(row=row, column=0, sticky="ew", pady=5)
+        tk.Label(frame, text=label, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 3))
+        tk.Entry(frame, textvariable=variable, bg=self.INPUT_BG, fg=self.FG,
+                 insertbackground=self.FG, relief="flat", font=("Consolas", 11),
+                 highlightthickness=1, highlightcolor=self.BLUE,
+                 highlightbackground=self.BORDER).pack(fill="x", ipady=7)
         parent.grid_columnconfigure(0, weight=1)
 
-    def _labeled_combo(self, parent: tk.Frame, row: int, label: str, variable: tk.StringVar, values: list[str]) -> None:
+    def _labeled_combo(self, parent: tk.Frame, row: int, label: str,
+                       variable: tk.StringVar, values: list[str]) -> None:
         frame = tk.Frame(parent, bg=self.PANEL)
         frame.grid(row=row, column=0, sticky="ew", pady=6)
         tk.Label(frame, text=label, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 4))
-        combo = ttk.Combobox(frame, textvariable=variable, values=values, style="Dark.TCombobox")
-        combo.pack(fill="x", ipady=6)
+        ttk.Combobox(frame, textvariable=variable, values=values,
+                     style="Light.TCombobox").pack(fill="x", ipady=6)
         parent.grid_columnconfigure(0, weight=1)
 
-    def _parse_positive_amount(self, value: str) -> float | None:
-        try:
-            amount = float(value.strip())
-        except ValueError:
-            return None
-        return amount if amount > 0 else None
+    # ── Submit handlers ──
 
-    def _parse_nonnegative_fee(self, value: str) -> float | None:
-        raw = value.strip()
-        if raw == "":
-            return 0.0
-        try:
-            fee = float(raw)
-        except ValueError:
-            return None
-        return fee if fee >= 0 else None
+    def _submit_send(self, address: str, amount: str, fee: str, modal: tk.Toplevel) -> None:
+        result = validate_address(address, self.ws.network)
+        if not result:
+            self.toast(result.error, "error")
+            return
+        parsed_amount = parse_positive_amount(amount)
+        if parsed_amount is None:
+            self.toast("Amount must be a positive number", "error")
+            return
+        parsed_fee = parse_nonnegative_fee(fee)
+        if parsed_fee is None:
+            self.toast("Priority fee must be a non-negative number", "error")
+            return
 
-    def _valid_lmt_address(self, address: str) -> bool:
-        normalized = address.strip().lower()
-        if len(normalized) < MIN_ADDRESS_LEN or ":" not in normalized:
-            return False
-        expected_prefix = NETWORK_PREFIX.get(str(self.config_data.get("network", DEFAULT_NETWORK)), "lmt")
-        prefix, payload = normalized.split(":", 1)
-        if prefix != expected_prefix or not payload:
-            return False
-        return all(ch in BECH32_CHARS for ch in payload)
+        normalized_address = address.strip().lower()
+        modal.destroy()
+        self._confirm_action(
+            "Confirm Send",
+            [f"Address: {normalized_address}",
+             f"Amount: {parsed_amount:.8f} LMT",
+             f"Priority fee: {parsed_fee:.8f} LMT",
+             "", "This will open an interactive CLI console for wallet secrets."],
+            lambda: self.run_interactive_action(
+                ["send", normalized_address, f"{parsed_amount:.8f}", f"{parsed_fee:.8f}"],
+                "send", f"Send {parsed_amount:.8f} LMT",
+            ),
+        )
+
+    def _submit_transfer(self, target_account: str, amount: str, fee: str, modal: tk.Toplevel) -> None:
+        account = target_account.strip()
+        if not account:
+            self.toast("Target account is required", "error")
+            return
+        parsed_amount = parse_positive_amount(amount)
+        if parsed_amount is None:
+            self.toast("Amount must be a positive number", "error")
+            return
+        parsed_fee = parse_nonnegative_fee(fee)
+        if parsed_fee is None:
+            self.toast("Priority fee must be a non-negative number", "error")
+            return
+
+        modal.destroy()
+        self._confirm_action(
+            "Confirm Transfer",
+            [f"Target account: {account}",
+             f"Amount: {parsed_amount:.8f} LMT",
+             f"Priority fee: {parsed_fee:.8f} LMT",
+             "", "This will open an interactive CLI console for wallet secrets."],
+            lambda: self.run_interactive_action(
+                ["transfer", account, f"{parsed_amount:.8f}", f"{parsed_fee:.8f}"],
+                "transfer", f"Transfer {parsed_amount:.8f} LMT to {account}",
+            ),
+        )
+
+    def _confirm_action(self, title: str, lines: list[str], on_confirm: Callable[[], None]) -> None:
+        modal = self._create_modal(title, accent=self.ORANGE)
+        modal.geometry("560x300")
+        container = tk.Frame(modal, bg=self.PANEL, padx=20, pady=14)
+        container.pack(fill="both", expand=True)
+        for line in lines:
+            fg = self.FG if line and not line.startswith(" ") else self.MUTED
+            tk.Label(container, text=line, bg=self.PANEL, fg=fg,
+                     font=("Segoe UI", 10), justify="left").pack(anchor="w", pady=1)
+        footer = tk.Frame(container, bg=self.PANEL)
+        footer.pack(fill="x", pady=(18, 0))
+        footer.grid_columnconfigure(0, weight=1)
+        footer.grid_columnconfigure(1, weight=1)
+        AnimatedButton(footer, text="\u2715  Cancel", command=modal.destroy,
+                       base_bg="#f1f5f9", hover_bg="#94a3b8", border_color=self.BORDER
+                       ).grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        AnimatedButton(footer, text="\u2713  Proceed",
+                       command=lambda: (modal.destroy(), on_confirm()),
+                       base_bg="#dcfce7", hover_bg=self.SUCCESS, border_color="#86efac", fg="#166534",
+                       ).grid(row=0, column=1, padx=(6, 0), sticky="ew")
+
+    # ── Account suggestions ──
 
     def _extract_account_suggestions(self, output: str) -> list[str]:
         suggestions: list[str] = []
@@ -460,7 +673,6 @@ class WalletGui(tk.Tk):
             if not match:
                 continue
             candidate = match.group(1).strip()
-            # Exclude address lines and feature descriptors.
             if ":" in candidate and candidate.split(":", 1)[0] in {"lmt", "lmttest", "lmtsim", "lmtdev"}:
                 continue
             if candidate.startswith("• "):
@@ -471,16 +683,17 @@ class WalletGui(tk.Tk):
         return suggestions
 
     def refresh_account_suggestions(self, silent: bool = False) -> None:
-        if self._busy:
+        ok, reason = self.ws.can_run_action()
+        if not ok:
             if not silent:
-                self.toast("Please wait for the current command to finish", "info")
+                self.toast(reason, "info")
             return
-        binary = self.require_cli()
+        binary = self._require_cli()
         if not binary:
             return
 
         def worker() -> None:
-            net_code, net_out = run_capture(binary, ["network", self.config_data.get("network", DEFAULT_NETWORK)])
+            net_code, net_out = run_capture(binary, ["network", self.ws.network])
             if net_code != 0:
                 self.after(0, lambda: self.log(net_out))
                 if not silent:
@@ -505,136 +718,56 @@ class WalletGui(tk.Tk):
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _confirm_action(self, title: str, lines: list[str], on_confirm: Callable[[], None]) -> None:
-        modal = self._create_modal(title)
-        modal.geometry("520x260")
-        container = tk.Frame(modal, bg=self.PANEL, padx=14, pady=12)
-        container.pack(fill="both", expand=True)
-        tk.Label(container, text=title, bg=self.PANEL, fg=self.FG, font=("Segoe UI Semibold", 14)).pack(anchor="w", pady=(0, 8))
-        for line in lines:
-            tk.Label(container, text=line, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10), justify="left").pack(anchor="w")
-
-        footer = tk.Frame(container, bg=self.PANEL)
-        footer.pack(fill="x", pady=(18, 0))
-        footer.grid_columnconfigure(0, weight=1)
-        footer.grid_columnconfigure(1, weight=1)
-        AnimatedButton(footer, text="Cancel", command=modal.destroy, base_bg="#334", hover_bg="#445").grid(row=0, column=0, padx=(0, 6), sticky="ew")
-        AnimatedButton(
-            footer,
-            text="Proceed",
-            command=lambda: (modal.destroy(), on_confirm()),
-            base_bg="#3d5aff",
-            hover_bg="#5a72ff",
-        ).grid(row=0, column=1, padx=(6, 0), sticky="ew")
-
-    def _submit_send(self, address: str, amount: str, fee: str, modal: tk.Toplevel) -> None:
-        normalized_address = address.strip()
-        parsed_amount = self._parse_positive_amount(amount)
-        parsed_fee = self._parse_nonnegative_fee(fee)
-
-        if not self._valid_lmt_address(normalized_address):
-            self.toast("Invalid destination address", "error")
-            return
-        if parsed_amount is None:
-            self.toast("Amount must be a positive number", "error")
-            return
-        if parsed_fee is None:
-            self.toast("Priority fee must be a non-negative number", "error")
-            return
-
-        modal.destroy()
-        self._confirm_action(
-            "Confirm Send",
-            [
-                f"Address: {normalized_address}",
-                f"Amount: {parsed_amount:.8f} LMT",
-                f"Priority fee: {parsed_fee:.8f} LMT",
-                "",
-                "This will open an interactive CLI console for wallet secrets.",
-            ],
-            lambda: self.run_interactive_action(["send", normalized_address, f"{parsed_amount:.8f}", f"{parsed_fee:.8f}"]),
-        )
-
-    def _submit_transfer(self, target_account: str, amount: str, fee: str, modal: tk.Toplevel) -> None:
-        account = target_account.strip()
-        parsed_amount = self._parse_positive_amount(amount)
-        parsed_fee = self._parse_nonnegative_fee(fee)
-
-        if not account:
-            self.toast("Target account is required", "error")
-            return
-        if parsed_amount is None:
-            self.toast("Amount must be a positive number", "error")
-            return
-        if parsed_fee is None:
-            self.toast("Priority fee must be a non-negative number", "error")
-            return
-
-        modal.destroy()
-        self._confirm_action(
-            "Confirm Transfer",
-            [
-                f"Target account: {account}",
-                f"Amount: {parsed_amount:.8f} LMT",
-                f"Priority fee: {parsed_fee:.8f} LMT",
-                "",
-                "This will open an interactive CLI console for wallet secrets.",
-            ],
-            lambda: self.run_interactive_action(["transfer", account, f"{parsed_amount:.8f}", f"{parsed_fee:.8f}"]),
-        )
+    # ── Misc ──
 
     def clear_output(self) -> None:
+        self.output.config(state="normal")
         self.output.delete("1.0", "end")
+        self.output.config(state="disabled")
+        self.line_count_var.set("0 lines")
         self.toast("Output cleared", "ok")
 
-    def _set_busy(self, busy: bool) -> None:
-        self._busy = busy
-        state = "disabled" if busy else "normal"
-        for button in self.action_buttons:
-            button.config(state=state)
-        if busy:
-            self._set_pill(" RUNNING ", "#2d2439", "#efd4ff")
-        else:
-            self.refresh_cli_status()
-
-    def _set_pill(self, text: str, bg: str, fg: str) -> None:
-        self.pill_status.config(text=text, bg=bg, fg=fg)
-
     def toast(self, message: str, kind: str = "info") -> None:
+        icons = {"ok": "\u2713", "error": "\u2717", "info": "\u25CF", "warn": "\u26A0"}
         colors = {
-            "ok": ("#143328", "#a8f2cf"),
-            "error": ("#3c1e29", "#ffc5d0"),
-            "info": ("#1c2e45", "#c8ddff"),
-            "warn": ("#3d3218", "#ffe6a6"),
+            "ok": ("#f0fdf4", "#166534", "#16a34a"),
+            "error": ("#fef2f2", "#991b1b", "#dc2626"),
+            "info": ("#eff6ff", "#1e3a5f", "#2563eb"),
+            "warn": ("#fffbeb", "#92400e", "#d97706"),
         }
-        bg, fg = colors.get(kind, colors["info"])
+        bg, fg, accent = colors.get(kind, colors["info"])
+        icon = icons.get(kind, "\u25CF")
 
         toast = tk.Toplevel(self)
         toast.overrideredirect(True)
         toast.attributes("-topmost", True)
         toast.attributes("-alpha", 0.0)
-        width, height = 320, 46
-        x = self.winfo_rootx() + self.winfo_width() - width - 24
-        y = self.winfo_rooty() + 24
+        width, height = 360, 44
+        x = self.winfo_rootx() + self.winfo_width() - width - 20
+        y = self.winfo_rooty() + 20
         toast.geometry(f"{width}x{height}+{x}+{y}")
-        tk.Frame(toast, bg="#0c0f18", padx=1, pady=1).pack(fill="both", expand=True)
-        inner = tk.Frame(toast, bg=bg)
-        inner.place(relx=0, rely=0, relwidth=1, relheight=1)
-        tk.Label(inner, text=message, bg=bg, fg=fg, font=("Segoe UI Semibold", 10), anchor="w").pack(fill="both", expand=True, padx=12)
+
+        border = tk.Frame(toast, bg=self.BORDER, padx=1, pady=1)
+        border.pack(fill="both", expand=True)
+        inner = tk.Frame(border, bg=bg)
+        inner.pack(fill="both", expand=True)
+        tk.Frame(inner, bg=accent, width=4).pack(side="left", fill="y")
+        tk.Label(inner, text=f"  {icon}  {message}", bg=bg, fg=fg,
+                 font=("Segoe UI Semibold", 10), anchor="w").pack(fill="both", expand=True, padx=(4, 14))
 
         def fade_in(alpha: float = 0.0) -> None:
-            if alpha >= 0.96:
-                toast.attributes("-alpha", 0.96)
-                toast.after(1700, fade_out, 0.96)
+            if alpha >= 0.97:
+                toast.attributes("-alpha", 0.97)
+                toast.after(2200, fade_out, 0.97)
                 return
             toast.attributes("-alpha", alpha)
-            toast.after(18, fade_in, alpha + 0.12)
+            toast.after(16, fade_in, alpha + 0.10)
 
         def fade_out(alpha: float) -> None:
             if alpha <= 0.0:
                 toast.destroy()
                 return
             toast.attributes("-alpha", alpha)
-            toast.after(18, fade_out, alpha - 0.14)
+            toast.after(16, fade_out, alpha - 0.12)
 
         fade_in()
