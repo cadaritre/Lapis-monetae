@@ -1,6 +1,6 @@
-# Kaspa Testnet 10 (TN10) – Crescendo Hardfork Node Setup Guide
+# LMT Testnet 10 (TN10) – Crescendo Hardfork Node Setup Guide
 
-Kaspa is about to take a significant leap with the **Crescendo Hardfork**, as detailed in [KIP14](https://github.com/kaspanet/kips/blob/master/kip-0014.md), transitioning from 1 to 10 blocks per second. To ensure a stable rollout, **Testnet 10 (TN10)** will first undergo this shift on approximately **March 6, 2025, 18:30 UTC**. By running TN10 and providing feedback, you help prepare for a smooth mainnet upgrade, tentatively planned for the end of April or early May.
+LMT is about to take a significant leap with the **Crescendo Hardfork**, as detailed in [KIP14](https://github.com/kaspanet/kips/blob/master/kip-0014.md), transitioning from 1 to 10 blocks per second. To ensure a stable rollout, **Testnet 10 (TN10)** will first undergo this shift on approximately **March 6, 2025, 18:30 UTC**. By running TN10 and providing feedback, you help prepare for a smooth mainnet upgrade, tentatively planned for the end of April or early May.
 
 ---
 
@@ -25,7 +25,7 @@ While the minimum specs suffice to sync and maintain a TN10 node with the accele
 
 ## 1. Install & Run Your TN10 Node
 
-1. **Obtain the latest Kaspa binaries**  
+1. **Obtain the latest LMT binaries**  
    Download and extract the latest [official release](https://github.com/kaspanet/rusty-kaspa/releases/), or build from the `master` branch by following the instructions in the project README.
 
 2. **Launch the Node**  
@@ -73,7 +73,7 @@ Leave this process running. Closing it will stop your node.
 ## 3. Mining on TN10
 
 1. **Download the Miner**  
-   Use the latest Kaspa CPU miner [release](https://github.com/elichai/kaspa-miner/releases) which supports TN10.
+   Use the latest LMT CPU miner [release](https://github.com/elichai/kaspa-miner/releases) which supports TN10.
 
 2. **Start Mining**  
   ```
@@ -93,5 +93,5 @@ Leave this process running. Closing it will stop your node.
 - **Mining:**  
   `kaspa-miner --testnet --mining-address <your-address> -p 16210 -t 1`  
 
-By participating in TN10, you help stress-test the Crescendo Hardfork environment and prepare for a robust mainnet upgrade in end of April / early May. Share any challenges or successes in the #testnet Discord channel, and thank you for supporting Kaspa’s continued evolution.
+By participating in TN10, you help stress-test the Crescendo Hardfork environment and prepare for a robust mainnet upgrade in end of April / early May. Share any challenges or successes in the #testnet Discord channel, and thank you for supporting LMT’s continued evolution.
 

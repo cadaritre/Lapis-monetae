@@ -1,11 +1,11 @@
 //!
-//! # Kaspa Wallet Core
+//! # LMT Wallet Core
 //!
-//! Multi-platform Rust framework for Kaspa Wallet.
+//! Multi-platform Rust framework for LMT Wallet.
 //!
 //! This framework provides a series of APIs and primitives
 //! to simplify building applications that interface with
-//! the Kaspa p2p network.
+//! the LMT p2p network.
 //!
 //! For key generation and derivation, please see the
 //! [`kaspa_wallet_keys`] crate.
@@ -65,7 +65,7 @@
 //! <https://github.com/kaspanet/rusty-kaspa/tree/master/wasm/nodejs>
 //!
 //! For pre-built browser-compatible WASM32 redistributables of this
-//! framework please see the releases section of the Rusty Kaspa
+//! framework please see the releases section of the Rusty LMT
 //! repository at <https://github.com/kaspanet/rusty-kaspa/releases>.
 //!
 

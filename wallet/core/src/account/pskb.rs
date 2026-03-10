@@ -1,6 +1,6 @@
 //!
 //! Tools for interfacing wallet accounts with PSKBs.
-//! (Partial Signed Kaspa Transaction Bundles).
+//! (Partially Signed LMT Transaction Bundles).
 //!
 
 pub use crate::error::Error;

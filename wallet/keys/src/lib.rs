@@ -1,7 +1,7 @@
 //!
-//! # Kaspa Wallet Keys
+//! # LMT Wallet Keys
 //!
-//! This crate provides tools for creating and managing Kaspa wallet keys.
+//! This crate provides tools for creating and managing LMT wallet keys.
 //! This includes extended key generation and derivation.
 //!
 

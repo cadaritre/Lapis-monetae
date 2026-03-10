@@ -1,5 +1,5 @@
 #!/bin/bash
-# This script builds the Rusty Kaspa WASM32 SDK release.
+# This script builds the Rusty LMT WASM32 SDK release.
 
 # make the script fail for any failed command
 set -e
@@ -39,10 +39,10 @@ wasm-pack build --weak-refs --target nodejs --out-name kaspa --out-dir nodejs/ka
 wasm-pack build --weak-refs --dev --target nodejs --out-name kaspa --out-dir nodejs/kaspa-dev --features wasm32-sdk $@
 
 # wasm-pack build --target web --dev --out-name kaspa --out-dir build/docs/kaspa --features wasm32-sdk $@
-typedoc --name "Kaspa WASM32 SDK - Key Generation" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa-keygen ./build/docs/kaspa-keygen.ts
-typedoc --name "Kaspa WASM32 SDK - RPC" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa-rpc ./build/docs/kaspa-rpc.ts
-typedoc --name "Kaspa WASM32 SDK - Core" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa-core ./build/docs/kaspa-core.ts
-typedoc --name "Kaspa WASM32 SDK" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa ./build/docs/kaspa.ts
+typedoc --name "LMT WASM32 SDK - Key Generation" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa-keygen ./build/docs/kaspa-keygen.ts
+typedoc --name "LMT WASM32 SDK - RPC" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa-rpc ./build/docs/kaspa-rpc.ts
+typedoc --name "LMT WASM32 SDK - Core" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa-core ./build/docs/kaspa-core.ts
+typedoc --name "LMT WASM32 SDK" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa ./build/docs/kaspa.ts
 
 # cp -r ../rpc/wrpc/wasm/web/kaspa-rpc release/kaspa-wasm32-sdk/web/kaspa-rpc
 cp -r web/kaspa-keygen release/kaspa-wasm32-sdk/web/kaspa-keygen

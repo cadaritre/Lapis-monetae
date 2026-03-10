@@ -52,17 +52,17 @@ const TS_BALANCE: &'static str = r#"
  */
 export interface IBalance {
     /**
-     * Total amount of Kaspa (in SOMPI) available for 
+     * Total amount of LMT (in SOMPI) available for 
      * spending.
      */
     mature: bigint;
     /**
-     * Total amount of Kaspa (in SOMPI) that has been 
+     * Total amount of LMT (in SOMPI) that has been 
      * received and is pending confirmation.
      */
     pending: bigint;
     /**
-     * Total amount of Kaspa (in SOMPI) currently 
+     * Total amount of LMT (in SOMPI) currently 
      * being sent as a part of the outgoing transaction
      * but has not yet been accepted by the network.
      */

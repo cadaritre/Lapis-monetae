@@ -478,8 +478,8 @@ declare! {
     r#"
     /**
      * Emitted by {@link UtxoProcessor} after successfully opening an RPC
-     * connection to the Kaspa node. This event contains general information
-     * about the Kaspa node.
+     * connection to the LMT node. This event contains general information
+     * about the LMT node.
      * 
      * @category Wallet Events
      */

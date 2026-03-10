@@ -1,6 +1,6 @@
-# Kaspa Crescendo Hardfork Node Setup Guide
+# LMT Crescendo Hardfork Node Setup Guide
 
-Kaspa is about to take a significant leap with the **Crescendo Hardfork**, as detailed in [KIP14](https://github.com/kaspanet/kips/blob/master/kip-0014.md), transitioning from 1 to 10 blocks per second. The hardfork is scheduled to activate on mainnet at DAA Score `110,165,000` which is roughly `2025-05-05 1500 UTC`.
+LMT is about to take a significant leap with the **Crescendo Hardfork**, as detailed in [KIP14](https://github.com/kaspanet/kips/blob/master/kip-0014.md), transitioning from 1 to 10 blocks per second. The hardfork is scheduled to activate on mainnet at DAA Score `110,165,000` which is roughly `2025-05-05 1500 UTC`.
 
 ## Recommended Hardware Specifications
 
@@ -22,7 +22,7 @@ If you are a pool operator, it is _strongly recommended_ that you pick specs tha
 
 ## Running Your Node
 
-1. **Obtain Kaspa v1.0.0 binaries**  
+1. **Obtain LMT v1.0.0 binaries**  
     Download and extract the official [1.0.0 release](https://github.com/kaspanet/rusty-kaspa/releases/tag/v1.0.0), or build from the `master` branch by following the instructions in the project README.
 
 2. **Launch the Node**  

@@ -17,7 +17,7 @@ impl Factory for Ctor {
     }
 
     fn description(&self) -> String {
-        "Kaspa Core bip32-watch Account".to_string()
+        "LMT Core bip32-watch Account".to_string()
     }
 
     async fn try_load(

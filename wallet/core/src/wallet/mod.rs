@@ -1,7 +1,7 @@
 //!
-//! # Kaspa wallet runtime implementation.
+//! # LMT wallet runtime implementation.
 //!
-//! This module contains a Rust implementation of the Kaspa wallet that
+//! This module contains a Rust implementation of the LMT wallet that
 //! can be used in native Rust as well as WASM32 (Browser, NodeJs, Bun)
 //! environments.
 //!

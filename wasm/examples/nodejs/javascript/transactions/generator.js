@@ -66,7 +66,7 @@ const { encoding, networkId, address : destinationAddress } = require("../utils"
         // is reached. The remaining amount will be sent 
         // to the change address.
         //
-        // If the requested amount is greater than the Kaspa
+        // If the requested amount is greater than the LMT
         // transaction mass, the Generator will create multiple
         // transactions where each transaction will forward
         // UTXOs to the change address, until the requested
@@ -82,7 +82,7 @@ const { encoding, networkId, address : destinationAddress } = require("../utils"
 
         // transaction generator creates a 
         // sequence of transactions
-        // for a requested amount of KAS.
+        // for a requested amount of LMT.
         // sign and submit these transactions
         let pending;
         while (pending = await generator.next()) {

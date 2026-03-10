@@ -1,6 +1,6 @@
 [package]
 name = "kaspa-cli"
-description = "Kaspa CLI"
+description = "LMT CLI"
 keywords = ["kaspa", "wallet", "cli", "rpc"]
 rust-version.workspace = true
 version.workspace = true

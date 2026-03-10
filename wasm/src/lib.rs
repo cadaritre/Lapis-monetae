@@ -1,5 +1,5 @@
 /*!
-# Rusty Kaspa WASM32 bindings
+# Rusty LMT WASM32 bindings
 
 [<img alt="github" src="https://img.shields.io/badge/github-kaspanet/rusty--kaspa-8da0cb?style=for-the-badge&labelColor=555555&color=8da0cb&logo=github" height="20">](https://github.com/kaspanet/rusty-kaspa/tree/master/wasm)
 [<img alt="crates.io" src="https://img.shields.io/crates/v/kaspa-wasm.svg?maxAge=2592000&style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/kaspa-wasm)
@@ -8,12 +8,12 @@
 
 <br>
 
-Rusty-Kaspa WASM32 bindings offer direct integration of Rust code and Rusty-Kaspa
+Rusty-LMT WASM32 bindings offer direct integration of Rust code and Rusty-LMT
 codebase within JavaScript environments such as Node.js and Web Browsers.
 
 ## Documentation
 
-- [**Integrating with Kaspa** guide](https://kaspa.aspectron.org/)
+- [**Integrating with LMT** guide](https://kaspa.aspectron.org/)
 - [Rust SDK documentation (**Rustdoc**)](https://docs.rs/kaspa-wasm/)
 - [TypeScript documentation (**JSDoc**)](https://kaspa.aspectron.org/docs/)
 
@@ -26,7 +26,7 @@ to the 'snake_case' convention in Rust.
 The APIs are currently separated into the following groups (this will be expanded in the future):
 
 - **Consensus Client API** — Bindings for primitives related to transactions.
-- **RPC API** — [RPC interface bindings](kaspa_wrpc_wasm::client) for the Kaspa node using WebSocket (wRPC) connections.
+- **RPC API** — [RPC interface bindings](kaspa_wrpc_wasm::client) for the LMT node using WebSocket (wRPC) connections.
 - **Wallet SDK** — API for async core wallet processing tasks.
 - **Wallet API** — A rust implementation of the fully-featured wallet usable in the native Rust, Browser or NodeJs and Bun environments.
 
@@ -55,7 +55,7 @@ JavaScript examples for using this framework can be found at:
 ## WASM32 Binaries
 
 For pre-built browser-compatible WASM32 redistributables of this
-framework please see the releases section of the Rusty Kaspa
+framework please see the releases section of the Rusty LMT
 repository at <https://github.com/kaspanet/rusty-kaspa/releases>.
 
 ## Development Builds
@@ -76,7 +76,7 @@ in the NodeJS environment, you need to introduce a global W3C WebSocket
 object before loading the WASM32 library (to simulate the browser behavior).
 You can the [WebSocket](https://www.npmjs.com/package/websocket)
 module that offers W3C WebSocket compatibility and is compatible
-with Kaspa RPC implementation.
+with LMT RPC implementation.
 
 You can use the following shims:
 
@@ -138,7 +138,7 @@ const rpc = new RpcClient({
 })();
 ```
 
-For more details, please follow the [**Integrating with Kaspa**](https://kaspa.aspectron.org/) guide.
+For more details, please follow the [**Integrating with LMT**](https://kaspa.aspectron.org/) guide.
 
 */
 
@@ -163,11 +163,11 @@ cfg_if::cfg_if! {
         pub use kaspa_txscript::wasm::*;
 
         pub mod rpc {
-            //! Kaspa RPC interface
+            //! LMT RPC interface
             //!
 
             pub mod messages {
-                //! Kaspa RPC messages
+                //! LMT RPC messages
                 pub use kaspa_rpc_core::model::message::*;
             }
             pub use kaspa_rpc_core::api::rpc::RpcApi;
@@ -191,11 +191,11 @@ cfg_if::cfg_if! {
         pub use kaspa_txscript::wasm::*;
 
         pub mod rpc {
-            //! Kaspa RPC interface
+            //! LMT RPC interface
             //!
 
             pub mod messages {
-                //! Kaspa RPC messages
+                //! LMT RPC messages
                 pub use kaspa_rpc_core::model::message::*;
             }
             pub use kaspa_rpc_core::api::rpc::RpcApi;

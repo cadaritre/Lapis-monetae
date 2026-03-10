@@ -1,7 +1,7 @@
 use crate::imports::*;
 
 #[derive(Default, Handler)]
-#[help("Connect to a Kaspa network")]
+#[help("Connect to an LMT network")]
 pub struct Connect;
 
 impl Connect {

@@ -13,7 +13,7 @@ extern "C" {
     pub type ISompiToKaspa;
 }
 
-/// Convert a Kaspa string to Sompi represented by bigint.
+/// Convert an LMT string to Sompi represented by bigint.
 /// This function provides correct precision handling and
 /// can be used to parse user input.
 /// @category Wallet SDK
@@ -23,7 +23,7 @@ pub fn kaspa_to_sompi(kaspa: String) -> Option<BigInt> {
 }
 
 ///
-/// Convert Sompi to a string representation of the amount in Kaspa.
+/// Convert Sompi to a string representation of the amount in LMT.
 ///
 /// @category Wallet SDK
 ///
@@ -34,7 +34,7 @@ pub fn sompi_to_kaspa_string(sompi: ISompiToKaspa) -> Result<String> {
 }
 
 ///
-/// Format a Sompi amount to a string representation of the amount in Kaspa with a suffix
+/// Format a Sompi amount to a string representation of the amount in LMT with a suffix
 /// based on the network type (e.g. `KAS` for mainnet, `TKAS` for testnet,
 /// `SKAS` for simnet, `DKAS` for devnet).
 ///

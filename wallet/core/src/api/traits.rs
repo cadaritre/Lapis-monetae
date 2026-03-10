@@ -1,5 +1,5 @@
 //!
-//! API trait for interfacing with the Kaspa wallet subsystem.
+//! API trait for interfacing with the LMT wallet subsystem.
 //!
 //! The wallet API is a high-level API that allows applications to perform
 //! wallet operations such as creating a wallet, opening a wallet, creating
@@ -14,7 +14,7 @@ use crate::tx::GeneratorSummary;
 use workflow_core::channel::Receiver;
 
 ///
-///  API trait for interfacing with the Kaspa wallet subsystem.
+///  API trait for interfacing with the LMT wallet subsystem.
 ///
 #[async_trait]
 pub trait WalletApi: Send + Sync + AnySync {
