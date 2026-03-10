@@ -282,8 +282,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
     }
 
-    if !args.archival && args.retention_period_days.is_some() {
-        let retention_period_days = args.retention_period_days.unwrap();
+    if !args.archival && let Some(retention_period_days) = args.retention_period_days {
         // Look only at post-fork values (which are the worst-case)
         let finality_depth = config.finality_depth().after();
         let target_time_per_block = config.target_time_per_block().after(); // in ms

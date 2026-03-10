@@ -1,128 +1,16 @@
-#!/usr/bin/env python3
-"""
-Phase 1 wallet launcher with dark GUI (Python wrapper for the existing CLI).
-
-This script does not replace wallet logic. It delegates critical operations
-to the project CLI so create/import/open and address workflows stay consistent.
-"""
-
 from __future__ import annotations
 
-import json
-import os
-import shutil
-import subprocess
-import sys
 import threading
 import tkinter as tk
 from datetime import datetime
-from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from tkinter import filedialog, ttk
 
+from .cli_bridge import launch_interactive, run_capture
+from .config import DEFAULT_NETWORK, NETWORK_CHOICES, load_config, resolve_cli_binary, save_config
+from .ui_components import AnimatedButton
 
-CONFIG_PATH = Path(__file__).with_name(".wallet_py_config.json")
-DEFAULT_NETWORK = "mainnet"
-NETWORK_CHOICES = ("mainnet", "testnet-10", "testnet-11")
-
-
-def load_config() -> dict[str, Any]:
-    if not CONFIG_PATH.exists():
-        return {"cli_path": "", "network": DEFAULT_NETWORK}
-    try:
-        data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return {"cli_path": "", "network": DEFAULT_NETWORK}
-    return {
-        "cli_path": str(data.get("cli_path", "")).strip(),
-        "network": str(data.get("network", DEFAULT_NETWORK)).strip() or DEFAULT_NETWORK,
-    }
-
-
-def save_config(config: dict[str, Any]) -> None:
-    CONFIG_PATH.write_text(json.dumps(config, indent=2), encoding="utf-8")
-
-
-def resolve_cli_binary(config: dict[str, Any]) -> str | None:
-    candidates: list[str] = []
-    explicit = str(config.get("cli_path", "")).strip()
-    env_bin = os.environ.get("LMT_CLI_BIN", "").strip()
-    if explicit:
-        candidates.append(explicit)
-    if env_bin:
-        candidates.append(env_bin)
-    candidates.extend(["kaspa-cli", "lmt-cli", "kaspa-cli.exe", "lmt-cli.exe"])
-
-    for candidate in candidates:
-        if not candidate:
-            continue
-        if Path(candidate).exists():
-            return str(Path(candidate))
-        found = shutil.which(candidate)
-        if found:
-            return found
-    return None
-
-
-def _hex_to_rgb(value: str) -> tuple[int, int, int]:
-    value = value.lstrip("#")
-    return int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16)
-
-
-def _rgb_to_hex(rgb: tuple[int, int, int]) -> str:
-    return "#{:02x}{:02x}{:02x}".format(*rgb)
-
-
-def _mix_color(a: str, b: str, t: float) -> str:
-    ar, ag, ab = _hex_to_rgb(a)
-    br, bg, bb = _hex_to_rgb(b)
-    mixed = (
-        int(ar + (br - ar) * t),
-        int(ag + (bg - ag) * t),
-        int(ab + (bb - ab) * t),
-    )
-    return _rgb_to_hex(mixed)
-
-
-class AnimatedButton(tk.Button):
-    def __init__(self, master: tk.Misc, **kwargs: Any) -> None:
-        self.base_bg = kwargs.pop("base_bg", "#2a2f45")
-        self.hover_bg = kwargs.pop("hover_bg", "#3b57ff")
-        self.press_bg = kwargs.pop("press_bg", "#2c44d4")
-        super().__init__(
-            master,
-            bg=self.base_bg,
-            fg="#f4f7ff",
-            activeforeground="#ffffff",
-            activebackground=self.press_bg,
-            relief="flat",
-            bd=0,
-            cursor="hand2",
-            padx=16,
-            pady=10,
-            **kwargs,
-        )
-        self._animation_token: int | None = None
-        self.bind("<Enter>", lambda _e: self._animate_to(self.hover_bg))
-        self.bind("<Leave>", lambda _e: self._animate_to(self.base_bg))
-        self.bind("<ButtonPress-1>", lambda _e: self.config(bg=self.press_bg))
-        self.bind("<ButtonRelease-1>", lambda _e: self._animate_to(self.hover_bg))
-
-    def _animate_to(self, target: str, steps: int = 6, delay_ms: int = 18) -> None:
-        if self._animation_token is not None:
-            self.after_cancel(self._animation_token)
-            self._animation_token = None
-        current = self.cget("bg")
-
-        def tick(step: int) -> None:
-            if step > steps:
-                self.config(bg=target)
-                return
-            ratio = step / float(steps)
-            self.config(bg=_mix_color(current, target, ratio))
-            self._animation_token = self.after(delay_ms, tick, step + 1)
-
-        tick(1)
+MIN_ADDRESS_LEN = 16
 
 
 class WalletGui(tk.Tk):
@@ -132,16 +20,16 @@ class WalletGui(tk.Tk):
     TEXT_BG = "#121829"
     FG = "#ecf1ff"
     MUTED = "#9aa8ca"
-    ACCENT = "#3b57ff"
     SUCCESS = "#2ac98c"
     ERROR = "#ff5f7a"
-    WARNING = "#f8c14b"
 
     def __init__(self) -> None:
         super().__init__()
         self.config_data = load_config()
         self.action_buttons: list[AnimatedButton] = []
         self._busy = False
+        self.send_modal: tk.Toplevel | None = None
+        self.transfer_modal: tk.Toplevel | None = None
         self.title("Lapis Monetae Wallet Launcher")
         self.geometry("1020x700")
         self.minsize(920, 620)
@@ -180,7 +68,7 @@ class WalletGui(tk.Tk):
         ).pack(anchor="w")
         tk.Label(
             header,
-            text="Phase 1 - Modern dark mode GUI",
+            text="Phase 2 - Structured dark mode GUI",
             bg=self.BG,
             fg=self.MUTED,
             font=("Segoe UI", 10),
@@ -203,7 +91,7 @@ class WalletGui(tk.Tk):
 
         tk.Label(top_panel, text="CLI path", bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10)).grid(row=0, column=0, sticky="w")
         self.cli_path_var = tk.StringVar(value=self.config_data.get("cli_path", ""))
-        cli_entry = tk.Entry(
+        tk.Entry(
             top_panel,
             textvariable=self.cli_path_var,
             bg=self.INPUT_BG,
@@ -211,8 +99,7 @@ class WalletGui(tk.Tk):
             insertbackground=self.FG,
             relief="flat",
             font=("Consolas", 10),
-        )
-        cli_entry.grid(row=1, column=0, sticky="ew", padx=(0, 8), ipady=8)
+        ).grid(row=1, column=0, sticky="ew", padx=(0, 8), ipady=8)
 
         AnimatedButton(top_panel, text="Browse", command=self.on_browse_cli).grid(row=1, column=1, padx=(0, 8))
         AnimatedButton(top_panel, text="Save", command=self.on_save_cli_path, base_bg="#2f3653", hover_bg="#4b57a3").grid(row=1, column=2)
@@ -245,8 +132,7 @@ class WalletGui(tk.Tk):
         top_panel.grid_columnconfigure(0, weight=1)
 
         self.status_var = tk.StringVar(value="CLI: unresolved")
-        status = tk.Label(outer, textvariable=self.status_var, bg=self.BG, fg=self.MUTED, font=("Segoe UI", 10))
-        status.pack(anchor="w", pady=(10, 8))
+        tk.Label(outer, textvariable=self.status_var, bg=self.BG, fg=self.MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(10, 8))
 
         actions_shell = tk.Frame(outer, bg="#0c0f18", padx=1, pady=1)
         actions_shell.pack(fill="x", pady=(0, 12))
@@ -257,6 +143,8 @@ class WalletGui(tk.Tk):
         row1.pack(fill="x", pady=(0, 8))
         row2 = tk.Frame(actions, bg=self.PANEL)
         row2.pack(fill="x")
+        row3 = tk.Frame(actions, bg=self.PANEL)
+        row3.pack(fill="x")
 
         self._add_action_button(row1, 0, "Create Wallet", self.action_create, "#465bff")
         self._add_action_button(row1, 1, "Import Wallet", self.action_import, "#4f67ff")
@@ -266,9 +154,14 @@ class WalletGui(tk.Tk):
         self._add_action_button(row2, 1, "Show Address", lambda: self.run_capture_action(["address"]), "#27bb9c")
         self._add_action_button(row2, 2, "New Address", lambda: self.run_capture_action(["address", "new"]), "#31c27b")
         self._add_action_button(row2, 3, "Clear Output", self.clear_output, "#7d4df2")
+        self._add_action_button(row3, 0, "Send LMT", self.open_send_modal, "#c056ff")
+        self._add_action_button(row3, 1, "Transfer Between Accounts", self.open_transfer_modal, "#f27767")
+        tk.Label(row3, text="", bg=self.PANEL).grid(row=0, column=2, padx=6, pady=6, sticky="ew")
+        tk.Label(row3, text="", bg=self.PANEL).grid(row=0, column=3, padx=6, pady=6, sticky="ew")
         for col in range(4):
             row1.grid_columnconfigure(col, weight=1)
             row2.grid_columnconfigure(col, weight=1)
+            row3.grid_columnconfigure(col, weight=1)
 
         output_shell = tk.Frame(outer, bg="#0c0f18", padx=1, pady=1)
         output_shell.pack(fill="both", expand=True)
@@ -289,8 +182,6 @@ class WalletGui(tk.Tk):
         )
         self.output.pack(fill="both", expand=True)
         self.output.tag_configure("ts", foreground="#7f95c7")
-        self.output.tag_configure("error", foreground=self.ERROR)
-        self.output.tag_configure("ok", foreground=self.SUCCESS)
 
     def _add_action_button(self, parent: tk.Frame, col: int, text: str, command: Any, hover: str) -> None:
         btn = AnimatedButton(parent, text=text, command=command, hover_bg=hover)
@@ -351,40 +242,21 @@ class WalletGui(tk.Tk):
 
         def worker() -> None:
             if ensure_network:
-                net_code, net_out = self.run_capture(binary, ["network", self.config_data.get("network", DEFAULT_NETWORK)])
+                net_code, net_out = run_capture(binary, ["network", self.config_data.get("network", DEFAULT_NETWORK)])
                 self.after(0, lambda: self.log(net_out))
                 if net_code != 0:
                     self.after(0, lambda: self.toast("Failed to select network", "error"))
                     self.after(0, lambda: self._set_busy(False))
                     return
-            code, out = self.run_capture(binary, args)
+            code, out = run_capture(binary, args)
             self.after(0, lambda: self.log(out))
             self.after(0, lambda: self.log(f"Exit code: {code}\n"))
-            if code == 0:
-                self.after(0, lambda: self.toast("Command completed", "ok"))
-            else:
-                self.after(0, lambda: self.toast("Command finished with an error", "error"))
+            self.after(0, lambda: self.toast("Command completed", "ok" if code == 0 else "error"))
             self.after(0, lambda: self._set_busy(False))
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def run_capture(self, binary: str, args: list[str]) -> tuple[int, str]:
-        command = [binary, *args]
-        try:
-            result = subprocess.run(command, text=True, capture_output=True, cwd=str(Path(__file__).parent))
-        except OSError as err:
-            return 1, f"> {' '.join(command)}\nERROR: {err}"
-
-        text = f"> {' '.join(command)}\n"
-        if result.stdout:
-            text += result.stdout
-        if result.stderr:
-            text += "\n[stderr]\n" + result.stderr
-        if not result.stdout and not result.stderr:
-            text += "(no output)\n"
-        return result.returncode, text
-
-    def launch_interactive(self, args: list[str]) -> None:
+    def run_interactive_action(self, args: list[str]) -> None:
         if self._busy:
             self.toast("Please wait for the current command to finish", "info")
             return
@@ -393,20 +265,12 @@ class WalletGui(tk.Tk):
             return
 
         self.run_capture_action(["network", self.config_data.get("network", DEFAULT_NETWORK)], ensure_network=False)
-
-        command = [binary, *args]
-        try:
-            if os.name == "nt":
-                subprocess.Popen(command, creationflags=subprocess.CREATE_NEW_CONSOLE, cwd=str(Path(__file__).parent))
-                self.log(f"Launched interactive command in new console: {' '.join(command)}")
-                self.toast("Interactive command opened in a new console", "info")
-            else:
-                subprocess.Popen(command, cwd=str(Path(__file__).parent))
-                self.log(f"Launched interactive command: {' '.join(command)}")
-                self.toast("Interactive command launched", "info")
-        except OSError as err:
-            self.log(f"ERROR launching interactive command: {err}")
-            self.toast("Error opening interactive console", "error")
+        ok, message = launch_interactive(binary, args)
+        self.log(message)
+        self.toast(
+            "Interactive command launched" if ok else "Error opening interactive console",
+            "info" if ok else "error",
+        )
 
     def _wallet_name(self) -> str:
         return self.wallet_name_var.get().strip()
@@ -416,24 +280,210 @@ class WalletGui(tk.Tk):
         name = self._wallet_name()
         if name:
             args.append(name)
-        self.launch_interactive(args)
+        self.run_interactive_action(args)
 
     def action_import(self) -> None:
         args = ["wallet", "import"]
         name = self._wallet_name()
         if name:
             args.append(name)
-        self.launch_interactive(args)
+        self.run_interactive_action(args)
 
     def action_open(self) -> None:
         args = ["wallet", "open"]
         name = self._wallet_name()
         if name:
             args.append(name)
-        self.launch_interactive(args)
+        self.run_interactive_action(args)
 
     def action_list_balances(self) -> None:
         self.run_capture_action(["list"], ensure_network=True)
+
+    def open_send_modal(self) -> None:
+        if self.send_modal and self.send_modal.winfo_exists():
+            self.send_modal.focus_force()
+            return
+        modal = self._create_modal("Send LMT")
+        self.send_modal = modal
+
+        content = tk.Frame(modal, bg=self.PANEL, padx=14, pady=12)
+        content.pack(fill="both", expand=True)
+
+        recipient_var = tk.StringVar()
+        amount_var = tk.StringVar()
+        fee_var = tk.StringVar(value="0")
+
+        self._labeled_entry(content, 0, "Recipient address", recipient_var)
+        self._labeled_entry(content, 1, "Amount (LMT)", amount_var)
+        self._labeled_entry(content, 2, "Priority fee (LMT, optional)", fee_var)
+
+        footer = tk.Frame(content, bg=self.PANEL)
+        footer.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        footer.grid_columnconfigure(0, weight=1)
+        footer.grid_columnconfigure(1, weight=1)
+        AnimatedButton(footer, text="Cancel", command=modal.destroy, base_bg="#334", hover_bg="#445").grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        AnimatedButton(
+            footer,
+            text="Confirm and Send",
+            command=lambda: self._submit_send(recipient_var.get(), amount_var.get(), fee_var.get(), modal),
+            base_bg="#6c2cff",
+            hover_bg="#8749ff",
+        ).grid(row=0, column=1, padx=(6, 0), sticky="ew")
+
+    def open_transfer_modal(self) -> None:
+        if self.transfer_modal and self.transfer_modal.winfo_exists():
+            self.transfer_modal.focus_force()
+            return
+        modal = self._create_modal("Transfer Between Accounts")
+        self.transfer_modal = modal
+
+        content = tk.Frame(modal, bg=self.PANEL, padx=14, pady=12)
+        content.pack(fill="both", expand=True)
+
+        account_var = tk.StringVar()
+        amount_var = tk.StringVar()
+        fee_var = tk.StringVar(value="0")
+
+        self._labeled_entry(content, 0, "Target account (name or id)", account_var)
+        self._labeled_entry(content, 1, "Amount (LMT)", amount_var)
+        self._labeled_entry(content, 2, "Priority fee (LMT, optional)", fee_var)
+
+        footer = tk.Frame(content, bg=self.PANEL)
+        footer.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        footer.grid_columnconfigure(0, weight=1)
+        footer.grid_columnconfigure(1, weight=1)
+        AnimatedButton(footer, text="Cancel", command=modal.destroy, base_bg="#334", hover_bg="#445").grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        AnimatedButton(
+            footer,
+            text="Confirm and Transfer",
+            command=lambda: self._submit_transfer(account_var.get(), amount_var.get(), fee_var.get(), modal),
+            base_bg="#df5a45",
+            hover_bg="#f27767",
+        ).grid(row=0, column=1, padx=(6, 0), sticky="ew")
+
+    def _create_modal(self, title: str) -> tk.Toplevel:
+        modal = tk.Toplevel(self)
+        modal.title(title)
+        modal.configure(bg="#0c0f18")
+        modal.transient(self)
+        modal.grab_set()
+        modal.geometry("520x300")
+        modal.resizable(False, False)
+        return modal
+
+    def _labeled_entry(self, parent: tk.Frame, row: int, label: str, variable: tk.StringVar) -> None:
+        frame = tk.Frame(parent, bg=self.PANEL)
+        frame.grid(row=row, column=0, sticky="ew", pady=6)
+        tk.Label(frame, text=label, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 4))
+        tk.Entry(
+            frame,
+            textvariable=variable,
+            bg=self.INPUT_BG,
+            fg=self.FG,
+            insertbackground=self.FG,
+            relief="flat",
+            font=("Consolas", 11),
+        ).pack(fill="x", ipady=8)
+        parent.grid_columnconfigure(0, weight=1)
+
+    def _parse_positive_amount(self, value: str) -> float | None:
+        try:
+            amount = float(value.strip())
+        except ValueError:
+            return None
+        return amount if amount > 0 else None
+
+    def _parse_nonnegative_fee(self, value: str) -> float | None:
+        raw = value.strip()
+        if raw == "":
+            return 0.0
+        try:
+            fee = float(raw)
+        except ValueError:
+            return None
+        return fee if fee >= 0 else None
+
+    def _valid_lmt_address(self, address: str) -> bool:
+        normalized = address.strip().lower()
+        return normalized.startswith("lmt") and len(normalized) >= MIN_ADDRESS_LEN
+
+    def _confirm_action(self, title: str, lines: list[str], on_confirm: Callable[[], None]) -> None:
+        modal = self._create_modal(title)
+        modal.geometry("520x260")
+        container = tk.Frame(modal, bg=self.PANEL, padx=14, pady=12)
+        container.pack(fill="both", expand=True)
+        tk.Label(container, text=title, bg=self.PANEL, fg=self.FG, font=("Segoe UI Semibold", 14)).pack(anchor="w", pady=(0, 8))
+        for line in lines:
+            tk.Label(container, text=line, bg=self.PANEL, fg=self.MUTED, font=("Segoe UI", 10), justify="left").pack(anchor="w")
+
+        footer = tk.Frame(container, bg=self.PANEL)
+        footer.pack(fill="x", pady=(18, 0))
+        footer.grid_columnconfigure(0, weight=1)
+        footer.grid_columnconfigure(1, weight=1)
+        AnimatedButton(footer, text="Cancel", command=modal.destroy, base_bg="#334", hover_bg="#445").grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        AnimatedButton(
+            footer,
+            text="Proceed",
+            command=lambda: (modal.destroy(), on_confirm()),
+            base_bg="#3d5aff",
+            hover_bg="#5a72ff",
+        ).grid(row=0, column=1, padx=(6, 0), sticky="ew")
+
+    def _submit_send(self, address: str, amount: str, fee: str, modal: tk.Toplevel) -> None:
+        normalized_address = address.strip()
+        parsed_amount = self._parse_positive_amount(amount)
+        parsed_fee = self._parse_nonnegative_fee(fee)
+
+        if not self._valid_lmt_address(normalized_address):
+            self.toast("Invalid destination address", "error")
+            return
+        if parsed_amount is None:
+            self.toast("Amount must be a positive number", "error")
+            return
+        if parsed_fee is None:
+            self.toast("Priority fee must be a non-negative number", "error")
+            return
+
+        modal.destroy()
+        self._confirm_action(
+            "Confirm Send",
+            [
+                f"Address: {normalized_address}",
+                f"Amount: {parsed_amount:.8f} LMT",
+                f"Priority fee: {parsed_fee:.8f} LMT",
+                "",
+                "This will open an interactive CLI console for wallet secrets.",
+            ],
+            lambda: self.run_interactive_action(["send", normalized_address, f"{parsed_amount:.8f}", f"{parsed_fee:.8f}"]),
+        )
+
+    def _submit_transfer(self, target_account: str, amount: str, fee: str, modal: tk.Toplevel) -> None:
+        account = target_account.strip()
+        parsed_amount = self._parse_positive_amount(amount)
+        parsed_fee = self._parse_nonnegative_fee(fee)
+
+        if not account:
+            self.toast("Target account is required", "error")
+            return
+        if parsed_amount is None:
+            self.toast("Amount must be a positive number", "error")
+            return
+        if parsed_fee is None:
+            self.toast("Priority fee must be a non-negative number", "error")
+            return
+
+        modal.destroy()
+        self._confirm_action(
+            "Confirm Transfer",
+            [
+                f"Target account: {account}",
+                f"Amount: {parsed_amount:.8f} LMT",
+                f"Priority fee: {parsed_fee:.8f} LMT",
+                "",
+                "This will open an interactive CLI console for wallet secrets.",
+            ],
+            lambda: self.run_interactive_action(["transfer", account, f"{parsed_amount:.8f}", f"{parsed_fee:.8f}"]),
+        )
 
     def clear_output(self) -> None:
         self.output.delete("1.0", "end")
@@ -490,17 +540,3 @@ class WalletGui(tk.Tk):
             toast.after(18, fade_out, alpha - 0.14)
 
         fade_in()
-
-
-def main() -> int:
-    app = WalletGui()
-    app.mainloop()
-    return 0
-
-
-if __name__ == "__main__":
-    try:
-        sys.exit(main())
-    except KeyboardInterrupt:
-        print("\nInterrupted by user.")
-        sys.exit(130)
