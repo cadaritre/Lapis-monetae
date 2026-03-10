@@ -91,7 +91,7 @@ impl CoinbaseManager {
         let emission_divisor: u64 = if scheduled_total <= target_total_sompi {
             1
         } else {
-            ((scheduled_total + target_total_sompi - 1) / target_total_sompi) as u64
+            scheduled_total.div_ceil(target_total_sompi) as u64
         };
 
         // Scale base subsidy and precompute subsidy-by-month tables for the actual BPS rate
@@ -355,7 +355,7 @@ mod tests {
         let emission_divisor: u64 = if scheduled_total <= target_total_sompi {
             1
         } else {
-            ((scheduled_total + target_total_sompi - 1) / target_total_sompi) as u64
+            scheduled_total.div_ceil(target_total_sompi) as u64
         };
 
         let scaled_pre_deflationary_base = params.pre_deflationary_phase_base_subsidy.div_ceil(emission_divisor);
