@@ -1591,20 +1591,36 @@ try_from!( estimate: RpcFeeEstimate, IFeeEstimate, {
         let bucket = IFeerateBucket::default();
         bucket.set("feerate", &normal_bucket.feerate.into())?;
         bucket.set("estimatedSeconds", &normal_bucket.estimated_seconds.into())?;
-        Ok(bucket)
-    }).collect::<Result<Vec<IFeerateBucket>>>()?;
+        Ok(JsValue::from(bucket))
+    }).collect::<Result<Vec<JsValue>>>()?;
 
     let low_buckets = estimate.low_buckets.into_iter().map(|low_bucket| {
         let bucket = IFeerateBucket::default();
         bucket.set("feerate", &low_bucket.feerate.into())?;
         bucket.set("estimatedSeconds", &low_bucket.estimated_seconds.into())?;
-        Ok(bucket)
-    }).collect::<Result<Vec<IFeerateBucket>>>()?;
+        Ok(JsValue::from(bucket))
+    }).collect::<Result<Vec<JsValue>>>()?;
+
+    let normal_buckets = {
+        let buckets = js_sys::Array::new();
+        for bucket in normal_buckets {
+            buckets.push(&bucket);
+        }
+        buckets
+    };
+
+    let low_buckets = {
+        let buckets = js_sys::Array::new();
+        for bucket in low_buckets {
+            buckets.push(&bucket);
+        }
+        buckets
+    };
 
     let estimate = IFeeEstimate::default();
     estimate.set("priorityBucket", &priority_bucket)?;
-    estimate.set("normalBuckets", &js_sys::Array::from_iter(normal_buckets))?;
-    estimate.set("lowBuckets", &js_sys::Array::from_iter(low_buckets))?;
+    estimate.set("normalBuckets", &normal_buckets)?;
+    estimate.set("lowBuckets", &low_buckets)?;
 
     Ok(estimate)
 });

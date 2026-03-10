@@ -4,12 +4,7 @@ use kaspa_muhash::EMPTY_MUHASH;
 use kaspa_utils::hex::ToHex;
 
 use kaspa_consensus_core::{
-    config::bps::TenBps,
-    header::Header,
-    merkle::calc_hash_merkle_root,
-    subnets::SUBNETWORK_ID_COINBASE,
-    tx::Transaction,
-    BlueWorkType,
+    config::bps::TenBps, header::Header, merkle::calc_hash_merkle_root, subnets::SUBNETWORK_ID_COINBASE, tx::Transaction, BlueWorkType,
 };
 
 const GENESIS_VERSION: u16 = 0;

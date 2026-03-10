@@ -28,8 +28,7 @@ impl State {
         // Zero out the time and nonce to keep a stable pre-PoW hash.
         let pre_pow_hash = hashing::header::hash_override_nonce_time(header, 0, 0);
         let flags = RandomXFlag::get_recommended_flags();
-        let cache = RandomXCache::new(flags, &pre_pow_hash.as_bytes())
-            .expect("RandomX cache initialization failed for PoW");
+        let cache = RandomXCache::new(flags, &pre_pow_hash.as_bytes()).expect("RandomX cache initialization failed for PoW");
         let vm = RandomXVM::new(flags, Some(cache), None).expect("RandomX VM initialization failed for PoW");
 
         Self { target, pre_pow_hash, timestamp: header.timestamp, vm }
@@ -38,8 +37,7 @@ impl State {
     pub fn from_pre_pow(pre_pow_hash: Hash, timestamp: u64, bits: u32) -> Self {
         let target = Uint256::from_compact_target_bits(bits);
         let flags = RandomXFlag::get_recommended_flags();
-        let cache =
-            RandomXCache::new(flags, &pre_pow_hash.as_bytes()).expect("RandomX cache initialization failed for PoW");
+        let cache = RandomXCache::new(flags, &pre_pow_hash.as_bytes()).expect("RandomX cache initialization failed for PoW");
         let vm = RandomXVM::new(flags, Some(cache), None).expect("RandomX VM initialization failed for PoW");
 
         Self { target, pre_pow_hash, timestamp, vm }

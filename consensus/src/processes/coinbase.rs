@@ -79,8 +79,7 @@ impl CoinbaseManager {
         let target_total_sompi: u128 = 100_000_000u128 * (SOMPI_PER_KASPA as u128);
 
         // Pre-deflationary minted amount (blocks count equals deflationary_phase_daa_score)
-        let pre_deflation_total: u128 =
-            (pre_deflationary_phase_base_subsidy as u128) * (deflationary_phase_daa_score as u128);
+        let pre_deflation_total: u128 = (pre_deflationary_phase_base_subsidy as u128) * (deflationary_phase_daa_score as u128);
 
         // Deflationary minted amount using the compressed SECONDS_PER_MONTH (BPS cancels out)
         let deflation_total: u128 = SUBSIDY_BY_MONTH_TABLE.iter().map(|v| (*v as u128) * (SECONDS_PER_MONTH as u128)).sum();
