@@ -291,7 +291,7 @@ mod tests {
             expected: Vec<u8>,
         }
 
-        let tests = vec![
+        let tests = [
             Test { name: "push OP_FALSE", opcodes: vec![OpFalse], expected: vec![OpFalse] },
             Test { name: "push OP_TRUE", opcodes: vec![OpTrue], expected: vec![OpTrue] },
             Test { name: "push OP_0", opcodes: vec![Op0], expected: vec![Op0] },
@@ -326,7 +326,7 @@ mod tests {
             expected: Vec<u8>,
         }
 
-        let tests = vec![
+        let tests = [
             Test { name: "push -1", val: -1, expected: vec![Op1Negate] },
             Test { name: "push small int 0", val: 0, expected: vec![Op0] },
             Test { name: "push small int 1", val: 1, expected: vec![Op1] },
@@ -399,7 +399,7 @@ mod tests {
             unchecked: bool,
         }
 
-        let tests = vec![
+        let tests = [
             // BIP0062: Pushing an empty byte sequence must use OP_0.
             Test { name: "push empty byte sequence", data: vec![], expected: Ok(vec![Op0]), unchecked: false },
             Test { name: "push 1 byte 0x00", data: vec![0x00], expected: Ok(vec![Op0]), unchecked: false },
@@ -529,7 +529,7 @@ mod tests {
             expected: Vec<u8>,
         }
 
-        let tests = vec![
+        let tests = [
             Test { name: "0x00", value: 0x00, expected: vec![Op0] },
             Test { name: "0x01", value: 0x01, expected: vec![Op1] },
             Test { name: "0xff", value: 0xff, expected: vec![OpData1, 0xff] },
