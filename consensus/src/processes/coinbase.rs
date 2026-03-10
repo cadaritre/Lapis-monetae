@@ -88,11 +88,8 @@ impl CoinbaseManager {
         let scheduled_total: u128 = pre_deflation_total + deflation_total;
 
         // Determine an integer divisor to scale emission down to the target (rounding up to avoid undershooting rewards per block to zero)
-        let emission_divisor: u64 = if scheduled_total <= target_total_sompi {
-            1
-        } else {
-            scheduled_total.div_ceil(target_total_sompi) as u64
-        };
+        let emission_divisor: u64 =
+            if scheduled_total <= target_total_sompi { 1 } else { scheduled_total.div_ceil(target_total_sompi) as u64 };
 
         // Scale base subsidy and precompute subsidy-by-month tables for the actual BPS rate
         let scaled_pre_deflationary_base = pre_deflationary_phase_base_subsidy.div_ceil(emission_divisor);
@@ -352,11 +349,8 @@ mod tests {
             (params.pre_deflationary_phase_base_subsidy as u128) * (params.deflationary_phase_daa_score as u128);
         let deflation_total: u128 = SUBSIDY_BY_MONTH_TABLE.iter().map(|v| (*v as u128) * (SECONDS_PER_MONTH as u128)).sum();
         let scheduled_total: u128 = pre_deflation_total + deflation_total;
-        let emission_divisor: u64 = if scheduled_total <= target_total_sompi {
-            1
-        } else {
-            scheduled_total.div_ceil(target_total_sompi) as u64
-        };
+        let emission_divisor: u64 =
+            if scheduled_total <= target_total_sompi { 1 } else { scheduled_total.div_ceil(target_total_sompi) as u64 };
 
         let scaled_pre_deflationary_base = params.pre_deflationary_phase_base_subsidy.div_ceil(emission_divisor);
         let pre_deflationary_rewards = scaled_pre_deflationary_base * params.deflationary_phase_daa_score;
