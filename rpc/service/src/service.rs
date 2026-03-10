@@ -804,8 +804,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 // For daa_score later than the last header, we estimate in milliseconds based on the difference
                 let time_adjustment = if header_idx == 0 {
                     // estimate milliseconds = (daa_score * target_time_per_block)
-                    (curr_daa_score - header.daa_score)
-                        .saturating_mul(self.config.target_time_per_block().get(header.daa_score))
+                    (curr_daa_score - header.daa_score).saturating_mul(self.config.target_time_per_block().get(header.daa_score))
                 } else {
                     // "next" header is the one that we processed last iteration
                     let next_header = &headers[header_idx - 1];

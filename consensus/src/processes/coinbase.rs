@@ -548,6 +548,49 @@ mod tests {
     }
 
     #[test]
+    fn crescendo_activation_boundary_uses_expected_subsidy_table() {
+        for network_id in NetworkId::iter() {
+            let params: Params = network_id.into();
+            let activation = params.crescendo_activation;
+            // Skip degenerate configs where there is no boundary to test.
+            if activation == ForkActivation::never() || activation == ForkActivation::always() {
+                continue;
+            }
+
+            let activation_daa_score = activation.daa_score();
+            if activation_daa_score <= params.deflationary_phase_daa_score {
+                continue;
+            }
+
+            let cbm = create_manager(&params);
+            let before_activation = activation_daa_score - 1;
+
+            assert!(!params.bps().activation().is_active(before_activation), "{}: expected pre-activation at daa-1", network_id);
+            assert!(params.bps().activation().is_active(activation_daa_score), "{}: expected activation at daa", network_id);
+
+            let month_before = cbm.subsidy_month(before_activation) as usize;
+            let month_at = cbm.subsidy_month(activation_daa_score) as usize;
+            assert!(month_at >= month_before, "{}: subsidy month must not go backwards at activation", network_id);
+
+            let expected_before = cbm.subsidy_by_month_table_before[month_before.min(cbm.subsidy_by_month_table_before.len() - 1)];
+            let expected_at = cbm.subsidy_by_month_table_after[month_at.min(cbm.subsidy_by_month_table_after.len() - 1)];
+
+            assert_eq!(
+                cbm.calc_block_subsidy(before_activation),
+                expected_before,
+                "{}: daa-1 must use pre-activation subsidy table",
+                network_id
+            );
+            assert_eq!(
+                cbm.calc_block_subsidy(activation_daa_score),
+                expected_at,
+                "{}: daa must use post-activation subsidy table",
+                network_id
+            );
+        }
+    }
+
+    #[test]
     fn payload_serialization_test() {
         let cbm = create_manager(&MAINNET_PARAMS);
 
