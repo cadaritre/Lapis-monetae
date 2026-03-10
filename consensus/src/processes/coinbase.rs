@@ -341,6 +341,14 @@ mod tests {
         tx::scriptvec,
     };
 
+    fn emission_divisor(pre_deflationary_phase_base_subsidy: u64, deflationary_phase_daa_score: u64) -> u64 {
+        let target_total_sompi: u128 = 100_000_000u128 * (SOMPI_PER_KASPA as u128);
+        let pre_deflation_total: u128 = (pre_deflationary_phase_base_subsidy as u128) * (deflationary_phase_daa_score as u128);
+        let deflation_total: u128 = SUBSIDY_BY_MONTH_TABLE.iter().map(|v| (*v as u128) * (SECONDS_PER_MONTH as u128)).sum();
+        let scheduled_total: u128 = pre_deflation_total + deflation_total;
+        if scheduled_total <= target_total_sompi { 1 } else { scheduled_total.div_ceil(target_total_sompi) as u64 }
+    }
+
     #[test]
     fn calc_high_bps_total_rewards_delta() {
         let params = &SIMNET_PARAMS;
@@ -378,15 +386,23 @@ mod tests {
     #[test]
     fn subsidy_by_month_table_test() {
         let cbm = create_legacy_manager();
+        let legacy_emission_divisor = emission_divisor(50_000_000_000, 15_778_800 - 259_200);
         cbm.subsidy_by_month_table_before.iter().enumerate().for_each(|(i, x)| {
-            assert_eq!(SUBSIDY_BY_MONTH_TABLE[i], *x, "for 1 BPS, const table and precomputed values must match");
+            assert_eq!(
+                SUBSIDY_BY_MONTH_TABLE[i].div_ceil(legacy_emission_divisor),
+                *x,
+                "for legacy 1 BPS, const table and precomputed values must match after emission scaling"
+            );
         });
 
         for network_id in NetworkId::iter() {
-            let cbm = create_manager(&network_id.into());
+            let params: Params = network_id.into();
+            let network_emission_divisor =
+                emission_divisor(params.pre_deflationary_phase_base_subsidy, params.deflationary_phase_daa_score);
+            let cbm = create_manager(&params);
             cbm.subsidy_by_month_table_before.iter().enumerate().for_each(|(i, x)| {
                 assert_eq!(
-                    SUBSIDY_BY_MONTH_TABLE[i].div_ceil(cbm.bps().before()),
+                    (SUBSIDY_BY_MONTH_TABLE[i].div_ceil(network_emission_divisor)).div_ceil(cbm.bps().before()),
                     *x,
                     "{}: locally computed and precomputed values must match",
                     network_id
@@ -394,7 +410,7 @@ mod tests {
             });
             cbm.subsidy_by_month_table_after.iter().enumerate().for_each(|(i, x)| {
                 assert_eq!(
-                    SUBSIDY_BY_MONTH_TABLE[i].div_ceil(cbm.bps().after()),
+                    (SUBSIDY_BY_MONTH_TABLE[i].div_ceil(network_emission_divisor)).div_ceil(cbm.bps().after()),
                     *x,
                     "{}: locally computed and precomputed values must match",
                     network_id
