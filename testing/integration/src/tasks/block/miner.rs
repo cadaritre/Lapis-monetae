@@ -1,4 +1,5 @@
 use crate::tasks::{Stopper, Task};
+use crate::common::utils::solve_block_template;
 use async_channel::Sender;
 use async_trait::async_trait;
 use kaspa_addresses::Address;
@@ -110,6 +111,8 @@ impl Task for BlockMinerTask {
                 let mut block = template.lock().block.clone();
                 // Use index as nonce to avoid duplicate blocks
                 block.header.nonce = i as u64;
+                // Ensure submitted blocks satisfy current PoW validation rules.
+                block = solve_block_template(block);
 
                 let c_template = template.clone();
                 let c_client = client.clone();

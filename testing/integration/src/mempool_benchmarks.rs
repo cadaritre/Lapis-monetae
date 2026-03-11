@@ -181,6 +181,7 @@ async fn bench_bbt_latency() {
             let mut block = current_template_consume.lock().block.clone();
             // Use index as nonce to avoid duplicate blocks
             block.header.nonce = i as u64;
+            block = common::utils::solve_block_template(block);
 
             let ctc = current_template_consume.clone();
             let ccc = cc.clone();
