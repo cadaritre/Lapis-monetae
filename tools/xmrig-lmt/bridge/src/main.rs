@@ -153,7 +153,7 @@ async fn handle_client(
                     "mining.submit" => {
                         let params = req.params.unwrap_or(Value::Null);
                         let submit = parse_submit(params)?;
-                        let mut template_guard = template_state.lock().await;
+                        let template_guard = template_state.lock().await;
                         let Some(template) = template_guard.clone() else {
                             let result = serde_json::json!(false);
                             send_response(&mut sink, req.id, result).await?;
@@ -170,7 +170,7 @@ async fn handle_client(
                             block.header.timestamp = ts;
                         }
                         let submit_req = SubmitBlockRequest::new(block, allow_non_daa);
-                        let submit_res = client.submit_block_call(submit_req).await;
+                        let submit_res = client.submit_block_call(None, submit_req).await;
                         let result = serde_json::json!(submit_res.is_ok());
                         send_response(&mut sink, req.id, result).await?;
                     }
@@ -199,7 +199,7 @@ async fn fetch_template(
     job_counter: &mut u64,
 ) -> Result<Template, Box<dyn std::error::Error>> {
     let response = client
-        .get_block_template_call(GetBlockTemplateRequest::new(pay_address.clone(), extra_data.clone()))
+        .get_block_template_call(None, GetBlockTemplateRequest::new(pay_address.clone(), extra_data.clone()))
         .await?;
     let block = response.block;
     let header = raw_header_to_header(&block.header);

@@ -81,6 +81,7 @@ coverage/
 
 # Local agent rules
 agent-rules.local.md
+README-LOCAL-PRUEBAS.md
 
 # Python cache artifacts
 __pycache__/
@@ -94,3 +95,9 @@ __pycache__/
 # Wallet GUI generated config/state
 wallet-gui/.wallet_gui_config.json
 **/.wallet_gui_config.json
+
+# Local mining build artifacts/deps (do not commit generated binaries)
+tools/xmrig-lmt/bridge/target/
+tools/xmrig-lmt/xmrig-fork/build/
+tools/xmrig-lmt/deps/
+tools/xmrig-lmt/xmrig-fork/bin/WinRing0/WinRing0x64.sys
