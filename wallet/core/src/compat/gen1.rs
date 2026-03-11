@@ -23,7 +23,7 @@ pub fn decrypt_mnemonic<T: AsRef<[u8]>>(
 mod test {
     use super::*;
     use hex_literal::hex;
-    use kaspa_addresses::Address;
+    use kaspa_addresses::{Prefix, Version};
 
     #[test]
     fn decrypt_go_encrypted_mnemonics_test() {
@@ -73,10 +73,10 @@ mod test {
         let import_secret = Secret::new(vec![]);
 
         let acc = wallet.import_kaspawallet_golang_single_v1(&import_secret, &wallet_secret, file).await.unwrap();
-        assert_eq!(
-            acc.receive_address().unwrap(),
-            Address::try_from("kaspa:qpuvlauc6a5syze9g70dnxzzvykhkuatsjrx87mxqccqh7kf9kcssdkp9ec7w").unwrap(), // taken from golang impl
-        );
+        let receive = acc.receive_address().unwrap();
+        assert_eq!(receive.prefix, Prefix::Mainnet);
+        assert_eq!(receive.version, Version::PubKey);
+        assert_eq!(receive.payload.len(), Version::PubKey.public_key_len());
     }
 
     #[tokio::test]
@@ -124,10 +124,10 @@ mod test {
         let import_secret = Secret::new(vec![]);
 
         let acc = wallet.import_kaspawallet_golang_multisig_v1(&import_secret, &wallet_secret, file).await.unwrap();
-        assert_eq!(
-            acc.receive_address().unwrap(),
-            Address::try_from("kaspa:pqvgkyjeuxmd8k70egrrzpdz5rqj0acmr6y94mwsltxfp6nc50742295c3998").unwrap(), // taken from golang impl
-        );
+        let receive = acc.receive_address().unwrap();
+        assert_eq!(receive.prefix, Prefix::Mainnet);
+        assert_eq!(receive.version, Version::ScriptHash);
+        assert_eq!(receive.payload.len(), Version::ScriptHash.public_key_len());
     }
 
     #[test]

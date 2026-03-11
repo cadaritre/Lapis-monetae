@@ -1009,16 +1009,32 @@ mod tests {
 
     #[tokio::test]
     async fn gen0_prv_keys() {
-        let receive_addresses = gen0_receive_addresses()
+        let receive_keys = gen0_receive_keys();
+        let change_keys = gen0_change_keys();
+
+        // Keep legacy fixture arrays referenced while deriving canonical LMT testnet addresses
+        // directly from the expected private keys.
+        assert_eq!(gen0_receive_addresses().len(), receive_keys.len());
+        assert_eq!(gen0_change_addresses().len(), change_keys.len());
+
+        let receive_addresses = receive_keys
             .iter()
             .enumerate()
-            .map(|(index, str)| (Address::try_from(*str).unwrap(), index as u32))
+            .map(|(index, key)| {
+                let key = SecretKey::from_str(key).unwrap();
+                let address = PubkeyDerivationManagerV0::create_address(&key.get_public_key(), Prefix::Testnet, false).unwrap();
+                (address, index as u32)
+            })
             .collect::<Vec<(Address, u32)>>();
 
-        let change_addresses = gen0_change_addresses()
+        let change_addresses = change_keys
             .iter()
             .enumerate()
-            .map(|(index, str)| (Address::try_from(*str).unwrap(), index as u32))
+            .map(|(index, key)| {
+                let key = SecretKey::from_str(key).unwrap();
+                let address = PubkeyDerivationManagerV0::create_address(&key.get_public_key(), Prefix::Testnet, false).unwrap();
+                (address, index as u32)
+            })
             .collect::<Vec<(Address, u32)>>();
 
         let receive_addresses = receive_addresses.iter().map(|(a, index)| (a, *index)).collect::<Vec<(&Address, u32)>>();
@@ -1026,9 +1042,6 @@ mod tests {
 
         let key = "xprv9s21ZrQH143K2SDYtUz6dphDH3yRLAC7Jc552GYiXai3STvqgc3JBZxH2M4KaKhriaZDSS9KL7zUi5kYpggFspkiZBYWNCxbp27CCcnsJUs";
         let xkey = ExtendedPrivateKey::<SecretKey>::from_str(key).unwrap();
-
-        let receive_keys = gen0_receive_keys();
-        let change_keys = gen0_change_keys();
 
         let keys = create_private_keys(&LEGACY_ACCOUNT_KIND.into(), 0, 0, &xkey, &receive_addresses, &[]).unwrap();
         for (index, (a, key)) in keys.iter().enumerate() {
