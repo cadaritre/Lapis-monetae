@@ -114,7 +114,8 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Skip cargo build with devnet-prealloc feature (temporary)
-        run: echo "Temporarily skipped: cargo build --release --features devnet-prealloc --workspace --all --tests --benches"
+        run: |
+          echo "Temporarily skipped: cargo build --release --features devnet-prealloc --workspace --all --tests --benches"
 
       - name: Run cargo test regular features
         run: |
