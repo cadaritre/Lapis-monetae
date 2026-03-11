@@ -1,6 +1,6 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
-use crate::common::{client_notify::ChannelNotify, daemon::Daemon};
+use crate::common::{client_notify::ChannelNotify, daemon::Daemon, utils::solve_block_template};
 use futures_util::future::try_join_all;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::params::SIMNET_GENESIS;
@@ -119,8 +119,9 @@ async fn sanity_test() {
                     let header: Header = (&block.header).into();
                     let block_hash = header.hash;
 
-                    // Submit the template (no mining, in simnet PoW is skipped)
-                    let response = rpc_client.submit_block(block.clone(), false).await.unwrap();
+                    // Submit a solved template (PoW is validated before block acceptance).
+                    let solved_block = solve_block_template(block.clone());
+                    let response = rpc_client.submit_block(solved_block, false).await.unwrap();
                     assert_eq!(response.report, SubmitBlockReport::Success);
 
                     // Wait for virtual event indicating the block was processed and entered past(virtual)

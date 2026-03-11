@@ -1,7 +1,10 @@
 param(
     [string]$Branch = "",
     [switch]$Follow,
-    [int]$SleepSeconds = 15
+    [int]$SleepSeconds = 15,
+    [switch]$AutoPush,
+    [switch]$ForcePush,
+    [string]$CommitMessage = "ci: automated checkpoint"
 )
 
 Set-StrictMode -Version Latest
@@ -23,6 +26,36 @@ function Get-LatestRun([string]$TargetBranch) {
     $runs = $json | ConvertFrom-Json
     if (-not $runs -or $runs.Count -eq 0) { return $null }
     return $runs[0]
+}
+
+function Has-WorkingTreeChanges {
+    $status = git status --porcelain
+    return -not [string]::IsNullOrWhiteSpace($status)
+}
+
+function Commit-And-Push([string]$TargetBranch, [string]$Message, [bool]$UseForcePush) {
+    if (-not (Has-WorkingTreeChanges)) {
+        Write-Host "AutoPush requested, but there are no local changes."
+    } else {
+        Write-Host "Staging changes..."
+        git add -A
+        Write-Host "Creating commit..."
+        git commit -m $Message
+        if ($LASTEXITCODE -ne 0) {
+            throw "git commit failed. Please resolve and retry."
+        }
+    }
+
+    $pushArgs = @("push", "origin", "HEAD:$TargetBranch")
+    if ($UseForcePush) {
+        $pushArgs += "--force"
+    }
+
+    Write-Host ("Pushing branch '{0}' ({1})..." -f $TargetBranch, ($(if ($UseForcePush) { "force" } else { "normal" })))
+    & git @pushArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "git push failed."
+    }
 }
 
 function Build-FailureSummary([string]$LogFile, [string]$SummaryFile, [string]$RunUrl, [string]$WorkflowName, [string]$HeadSha) {
@@ -64,7 +97,7 @@ function Build-FailureSummary([string]$LogFile, [string]$SummaryFile, [string]$R
         $md += "_No standard error signatures were detected in failed logs. Check the full log file._"
     } else {
         foreach ($line in $top) {
-            $md += "- ``$line``"
+            $md += ("- ``{0}``" -f $line)
         }
     }
     $md += ""
@@ -72,9 +105,9 @@ function Build-FailureSummary([string]$LogFile, [string]$SummaryFile, [string]$R
     $md += ""
     $md += "Use this with Cursor agent:"
     $md += ""
-    $md += "```"
+    $md += '```'
     $md += "Revisa el archivo .ci/failed-run.log y arregla solo errores relevantes del CI."
-    $md += "```"
+    $md += '```'
 
     $md -join [Environment]::NewLine | Set-Content -Path $SummaryFile -Encoding UTF8
 }
@@ -96,6 +129,10 @@ if (-not (Test-Path $ciDir)) {
 
 $failedLog = Join-Path $ciDir "failed-run.log"
 $summaryMd = Join-Path $ciDir "failed-run-summary.md"
+
+if ($AutoPush) {
+    Commit-And-Push -TargetBranch $Branch -Message $CommitMessage -UseForcePush:$ForcePush
+}
 
 Write-Host "Watching CI for branch '$Branch'..."
 $lastRunId = 0

@@ -33,6 +33,8 @@ pids
 *.pid.lock
 *.err
 *.out
+.ci/failed-run.log
+.ci/failed-run-summary.md
 
 # Coverage directory used by tools like istanbul
 coverage/

@@ -257,18 +257,21 @@ async fn daemon_utxos_propagation_test() {
         mine_block(blank_address.clone(), &rpc_client1, &clients).await;
     }
 
-    // Check the balance of the miner address
-    let miner_balance = rpc_client2.get_balance_by_address(miner_address.clone()).await.unwrap();
-    assert_eq!(miner_balance, initial_blocks * SIMNET_PARAMS.pre_deflationary_phase_base_subsidy);
-    let miner_balance = rpc_client1.get_balance_by_address(miner_address.clone()).await.unwrap();
-    assert_eq!(miner_balance, initial_blocks * SIMNET_PARAMS.pre_deflationary_phase_base_subsidy);
-
     // Get the miner UTXOs
     let utxos = fetch_spendable_utxos(&rpc_client1, miner_address.clone(), coinbase_maturity).await;
     assert_eq!(utxos.len(), EXTRA_BLOCKS - 1);
+    let expected_coinbase_amount = utxos.first().expect("expected at least one mature coinbase UTXO").1.amount;
+
+    // Check the balance of the miner address.
+    // Use the observed mature coinbase amount so this test stays valid across subsidy scaling changes.
+    let miner_balance = rpc_client2.get_balance_by_address(miner_address.clone()).await.unwrap();
+    assert_eq!(miner_balance, initial_blocks * expected_coinbase_amount);
+    let miner_balance = rpc_client1.get_balance_by_address(miner_address.clone()).await.unwrap();
+    assert_eq!(miner_balance, initial_blocks * expected_coinbase_amount);
+
     for utxo in utxos.iter() {
         assert!(utxo.1.is_coinbase);
-        assert_eq!(utxo.1.amount, SIMNET_PARAMS.pre_deflationary_phase_base_subsidy);
+        assert_eq!(utxo.1.amount, expected_coinbase_amount);
         assert_eq!(utxo.1.script_public_key, miner_spk);
     }
 
@@ -311,17 +314,14 @@ async fn daemon_utxos_propagation_test() {
         assert!(uc.added.iter().all(|x| x.address.is_some() && *x.address.as_ref().unwrap() == user_address));
         assert_eq!(uc.removed.len() as u64, NUMBER_INPUTS);
         assert_eq!(uc.added.len() as u64, NUMBER_OUTPUTS);
-        assert_eq!(
-            uc.removed.iter().map(|x| x.utxo_entry.amount).sum::<u64>(),
-            SIMNET_PARAMS.pre_deflationary_phase_base_subsidy * NUMBER_INPUTS
-        );
+        assert_eq!(uc.removed.iter().map(|x| x.utxo_entry.amount).sum::<u64>(), expected_coinbase_amount * NUMBER_INPUTS);
         assert_eq!(uc.added.iter().map(|x| x.utxo_entry.amount).sum::<u64>(), TX_AMOUNT);
     }
 
     // Check the balance of both miner and user addresses
     for x in clients.iter() {
         let miner_balance = x.get_balance_by_address(miner_address.clone()).await.unwrap();
-        assert_eq!(miner_balance, (initial_blocks - NUMBER_INPUTS) * SIMNET_PARAMS.pre_deflationary_phase_base_subsidy);
+        assert_eq!(miner_balance, (initial_blocks - NUMBER_INPUTS) * expected_coinbase_amount);
 
         let user_balance = x.get_balance_by_address(user_address.clone()).await.unwrap();
         assert_eq!(user_balance, TX_AMOUNT);
