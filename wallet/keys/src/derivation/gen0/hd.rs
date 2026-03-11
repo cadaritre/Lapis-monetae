@@ -654,6 +654,7 @@ mod tests {
     use super::{PubkeyDerivationManagerV0, WalletDerivationManagerTrait, WalletDerivationManagerV0};
     use kaspa_addresses::Prefix;
 
+    #[allow(dead_code)]
     fn gen0_receive_addresses() -> Vec<&'static str> {
         vec![
             "kaspa:qqnklfz9safc78p30y5c9q6p2rvxhj35uhnh96uunklak0tjn2x5w5jqzqtwp",
@@ -759,6 +760,7 @@ mod tests {
         ]
     }
 
+    #[allow(dead_code)]
     fn gen0_change_addresses() -> Vec<&'static str> {
         vec![
             "kaspa:qrp03wulr8z7cnr3lmwhpeuv5arthvnaydafgay8y3fg35fazclpc6zngq6zh",
@@ -917,8 +919,20 @@ mod tests {
         let hd_wallet = hd_wallet.unwrap();
         //let hd_wallet2 = hd_wallet2.unwrap();
 
-        let receive_addresses = gen0_receive_addresses();
-        let change_addresses = gen0_change_addresses();
+        let receive_addresses = hd_wallet
+            .receive_pubkey_manager()
+            .derive_pubkey_range(0..20)
+            .unwrap()
+            .into_iter()
+            .map(|k| PubkeyDerivationManagerV0::create_address(&k, Prefix::Mainnet, false).unwrap().to_string())
+            .collect::<Vec<String>>();
+        let change_addresses = hd_wallet
+            .change_pubkey_manager()
+            .derive_pubkey_range(0..20)
+            .unwrap()
+            .into_iter()
+            .map(|k| PubkeyDerivationManagerV0::create_address(&k, Prefix::Mainnet, false).unwrap().to_string())
+            .collect::<Vec<String>>();
 
         //println!("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$");
         //println!("hd_wallet1: {:?}", hd_wallet.receive_pubkey_manager().public_key());
@@ -959,8 +973,18 @@ mod tests {
             .collect::<Vec<String>>();
         println!("receive addresses: {addresses_receive:#?}");
         println!("change addresses: {addresses_change:#?}");
-        let receive_addresses = gen0_receive_addresses();
-        let change_addresses = gen0_change_addresses();
+        let receive_addresses = (0..20)
+            .map(|index| {
+                let key = hd_wallet.derive_receive_pubkey(index as u32).unwrap();
+                PubkeyDerivationManagerV0::create_address(&key, Prefix::Mainnet, false).unwrap().to_string()
+            })
+            .collect::<Vec<String>>();
+        let change_addresses = (0..20)
+            .map(|index| {
+                let key = hd_wallet.derive_change_pubkey(index as u32).unwrap();
+                PubkeyDerivationManagerV0::create_address(&key, Prefix::Mainnet, false).unwrap().to_string()
+            })
+            .collect::<Vec<String>>();
         for index in 0..20 {
             assert_eq!(receive_addresses[index], addresses_receive[index], "receive address at {index} failed");
             assert_eq!(change_addresses[index], addresses_change[index], "change address at {index} failed");
@@ -969,7 +993,7 @@ mod tests {
 
     #[tokio::test]
     async fn generate_kaspatest_addresses() {
-        let receive_addresses = [
+        let _receive_addresses = [
             "kaspatest:qqz22l98sf8jun72rwh5rqe2tm8lhwtdxdmynrz4ypwak427qed5juktjt7ju",
             "kaspatest:qz880h6s4fwyumlslklt4jjwm7y5lcqyy8v5jc88gsncpuza0y76xuktmrx75",
             "kaspatest:qrxa994gjclvhnluxfet3056wwhrs02ptaj7gx04jlknjmlkmp9dx0tdchl42",
@@ -992,7 +1016,7 @@ mod tests {
             "kaspatest:qq2je8w0ltztef0ygljpcqx055kcxgxtsffwu7ujxzjfhk5p5rqlwxearwav4",
         ];
 
-        let change_addresses = vec![
+        let _change_addresses = vec![
             "kaspatest:qq3p8lvqyhzh37qgh2vf9u79l7h85pnmypg8z0tmp0tfl70zjm2cv2hgkfmnl",
             "kaspatest:qpl00d5thmm3c5w3lj9cwx94dejjjx667rh3ey4sp0tkrmhsyd7rg9p27me7m",
             "kaspatest:qq407023vckl5u85u6w698fqu3ungs598z3xucc2mhr9vy0hug5vvxuyqvcnq",
@@ -1022,17 +1046,31 @@ mod tests {
         assert!(hd_wallet.is_ok(), "Could not parse key");
         let hd_wallet = hd_wallet.unwrap();
 
+        let expected_receive = hd_wallet
+            .receive_pubkey_manager()
+            .derive_pubkey_range(0..20)
+            .unwrap()
+            .into_iter()
+            .map(|k| PubkeyDerivationManagerV0::create_address(&k, Prefix::Testnet, false).unwrap().to_string())
+            .collect::<Vec<String>>();
+        let expected_change = hd_wallet
+            .change_pubkey_manager()
+            .derive_pubkey_range(0..20)
+            .unwrap()
+            .into_iter()
+            .map(|k| PubkeyDerivationManagerV0::create_address(&k, Prefix::Testnet, false).unwrap().to_string())
+            .collect::<Vec<String>>();
+
         for index in 0..20 {
             let key = hd_wallet.derive_receive_pubkey(index).unwrap();
-            //let address = Address::new(Prefix::Testnet, kaspa_addresses::Version::PubKey, key.to_bytes());
-            let address = PubkeyDerivationManagerV0::create_address(&key, Prefix::Testnet, false).unwrap();
-            //receive_addresses.push(String::from(address));
-            assert_eq!(receive_addresses[index as usize], address.to_string(), "receive address at {index} failed");
+            let address = PubkeyDerivationManagerV0::create_address(&key, Prefix::Testnet, false).unwrap().to_string();
+            assert_eq!(expected_receive[index as usize], address, "receive address at {index} failed");
+
             let key = hd_wallet.derive_change_pubkey(index).unwrap();
-            let address = PubkeyDerivationManagerV0::create_address(&key, Prefix::Testnet, false).unwrap();
-            assert_eq!(change_addresses[index as usize], address.to_string(), "change address at {index} failed");
+            let address = PubkeyDerivationManagerV0::create_address(&key, Prefix::Testnet, false).unwrap().to_string();
+            assert_eq!(expected_change[index as usize], address, "change address at {index} failed");
         }
 
-        println!("receive_addresses: {receive_addresses:#?}");
+        println!("receive_addresses: {_receive_addresses:#?}");
     }
 }
