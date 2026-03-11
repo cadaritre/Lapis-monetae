@@ -5,7 +5,7 @@ use crate::result::Result;
 use crate::tx::{Fees, MassCalculator, PaymentDestination};
 use crate::utxo::UtxoEntryReference;
 use crate::{tx::PaymentOutputs, utils::kaspa_to_sompi};
-use kaspa_addresses::Address;
+use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::config::params::Params;
 use kaspa_consensus_core::mass::UtxoCell;
 use kaspa_consensus_core::network::{NetworkId, NetworkType};
@@ -448,16 +448,16 @@ where
 
 pub(crate) fn change_address(network_type: NetworkType) -> Address {
     match network_type {
-        NetworkType::Mainnet => Address::try_from("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j").unwrap(),
-        NetworkType::Testnet => Address::try_from("kaspatest:qqz22l98sf8jun72rwh5rqe2tm8lhwtdxdmynrz4ypwak427qed5juktjt7ju").unwrap(),
+        NetworkType::Mainnet => Address::new(Prefix::Mainnet, Version::PubKey, &[0x11; 32]),
+        NetworkType::Testnet => Address::new(Prefix::Testnet, Version::PubKey, &[0x22; 32]),
         _ => unreachable!("network type not supported"),
     }
 }
 
 pub(crate) fn output_address(network_type: NetworkType) -> Address {
     match network_type {
-        NetworkType::Mainnet => Address::try_from("kaspa:qrd9efkvg3pg34sgp6ztwyv3r569qlc43wa5w8nfs302532dzj47knu04aftm").unwrap(),
-        NetworkType::Testnet => Address::try_from("kaspatest:qqrewmx4gpuekvk8grenkvj2hp7xt0c35rxgq383f6gy223c4ud5s58ptm6er").unwrap(),
+        NetworkType::Mainnet => Address::new(Prefix::Mainnet, Version::PubKey, &[0x33; 32]),
+        NetworkType::Testnet => Address::new(Prefix::Testnet, Version::PubKey, &[0x44; 32]),
         _ => unreachable!("network type not supported"),
     }
 }
