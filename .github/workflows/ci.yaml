@@ -117,7 +117,9 @@ jobs:
         run: echo "Temporarily skipped: cargo build --release --features devnet-prealloc --workspace --all --tests --benches"
 
       - name: Run cargo test regular features
-        run: cargo nextest run --release --workspace -E "not (test(daemon_integration_tests::daemon_utxos_propagation_test) or test(rpc_tests::sanity_test))"
+        run: |
+          cargo nextest run --release --workspace \
+            -E 'not (test(daemon_integration_tests::daemon_utxos_propagation_test) or test(rpc_tests::sanity_test))'
 
       - name: Run cargo doc tests
         run: cargo test --doc --release --workspace
