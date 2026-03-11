@@ -179,10 +179,7 @@ fn increment_utxos_changed_subscriptions() -> usize {
     match UTXOS_CHANGED_SUBSCRIPTIONS.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| current.checked_add(1)) {
         Ok(previous) => previous + 1,
         Err(current) => {
-            trace!(
-                "UtxosChangedSubscription counter overflow prevented, keeping count at {}",
-                current
-            );
+            trace!("UtxosChangedSubscription counter overflow prevented, keeping count at {}", current);
             current
         }
     }
@@ -193,10 +190,7 @@ fn decrement_utxos_changed_subscriptions() -> usize {
     match UTXOS_CHANGED_SUBSCRIPTIONS.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| current.checked_sub(1)) {
         Ok(previous) => previous - 1,
         Err(current) => {
-            trace!(
-                "UtxosChangedSubscription counter underflow prevented, keeping count at {}",
-                current
-            );
+            trace!("UtxosChangedSubscription counter underflow prevented, keeping count at {}", current);
             current
         }
     }
@@ -353,11 +347,7 @@ impl UtxosChangedSubscription {
     pub fn with_capacity(state: UtxosChangedState, listener_id: ListenerId, capacity: usize) -> Self {
         let data = RwLock::new(UtxosChangedSubscriptionData::with_capacity(state, capacity));
         let subscription = Self { data, listener_id };
-        trace!(
-            "UtxosChangedSubscription: {} in total (new {})",
-            increment_utxos_changed_subscriptions(),
-            subscription
-        );
+        trace!("UtxosChangedSubscription: {} in total (new {})", increment_utxos_changed_subscriptions(), subscription);
         subscription
     }
 
@@ -394,11 +384,7 @@ impl UtxosChangedSubscription {
 impl Clone for UtxosChangedSubscription {
     fn clone(&self) -> Self {
         let subscription = Self { data: RwLock::new(self.data().clone()), listener_id: self.listener_id };
-        trace!(
-            "UtxosChangedSubscription: {} in total (clone {})",
-            increment_utxos_changed_subscriptions(),
-            subscription
-        );
+        trace!("UtxosChangedSubscription: {} in total (clone {})", increment_utxos_changed_subscriptions(), subscription);
         subscription
     }
 }
@@ -411,11 +397,7 @@ impl Display for UtxosChangedSubscription {
 
 impl Drop for UtxosChangedSubscription {
     fn drop(&mut self) {
-        trace!(
-            "UtxosChangedSubscription: {} in total (drop {})",
-            decrement_utxos_changed_subscriptions(),
-            self
-        );
+        trace!("UtxosChangedSubscription: {} in total (drop {})", decrement_utxos_changed_subscriptions(), self);
     }
 }
 
