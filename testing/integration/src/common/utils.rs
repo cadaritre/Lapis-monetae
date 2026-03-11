@@ -18,7 +18,9 @@ use kaspa_consensus_core::{
 use kaspa_core::info;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_pow::State;
-use kaspa_rpc_core::{api::rpc::RpcApi, BlockAddedNotification, Notification, RpcRawBlock, RpcUtxoEntry, VirtualDaaScoreChangedNotification};
+use kaspa_rpc_core::{
+    api::rpc::RpcApi, BlockAddedNotification, Notification, RpcRawBlock, RpcUtxoEntry, VirtualDaaScoreChangedNotification,
+};
 use kaspa_txscript::pay_to_address_script;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use secp256k1::Keypair;
@@ -198,10 +200,7 @@ pub fn solve_block_template(mut block: RpcRawBlock) -> RpcRawBlock {
         nonce = nonce.wrapping_add(1);
     }
 
-    panic!(
-        "failed to find valid PoW nonce within {} attempts (start nonce: {})",
-        max_attempts, start_nonce
-    );
+    panic!("failed to find valid PoW nonce within {} attempts (start nonce: {})", max_attempts, start_nonce);
 }
 
 pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, listening_clients: &[ListeningClient]) {
