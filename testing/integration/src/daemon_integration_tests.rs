@@ -2,7 +2,7 @@ use crate::common::{
     client::ListeningClient,
     client_notify::ChannelNotify,
     daemon::Daemon,
-    utils::{fetch_spendable_utxos, generate_tx, mine_block, wait_for},
+    utils::{fetch_spendable_utxos, generate_tx, mine_block, solve_block_template, wait_for},
 };
 use kaspa_addresses::Address;
 use kaspa_alloc::init_allocator_with_default_settings;
@@ -78,9 +78,10 @@ async fn daemon_mining_test() {
             .get_block_template(Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &[0; 32]), vec![])
             .await
             .unwrap();
-        let header: Header = (&template.block.header).into();
+        let solved_block = solve_block_template(template.block);
+        let header: Header = (&solved_block.header).into();
         last_block_hash = Some(header.hash);
-        rpc_client1.submit_block(template.block, false).await.unwrap();
+        rpc_client1.submit_block(solved_block, false).await.unwrap();
 
         while let Ok(notification) = match tokio::time::timeout(Duration::from_secs(1), event_receiver.recv()).await {
             Ok(res) => res,
@@ -188,9 +189,10 @@ async fn daemon_utxos_propagation_test() {
     let mut last_block_hash = None;
     for i in 0..initial_blocks {
         let template = rpc_client1.get_block_template(miner_address.clone(), vec![]).await.unwrap();
-        let header: Header = (&template.block.header).into();
+        let solved_block = solve_block_template(template.block);
+        let header: Header = (&solved_block.header).into();
         last_block_hash = Some(header.hash);
-        rpc_client1.submit_block(template.block, false).await.unwrap();
+        rpc_client1.submit_block(solved_block, false).await.unwrap();
 
         while let Ok(notification) = match tokio::time::timeout(Duration::from_secs(1), event_receiver1.recv()).await {
             Ok(res) => res,

@@ -17,7 +17,8 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::info;
 use kaspa_grpc_client::GrpcClient;
-use kaspa_rpc_core::{api::rpc::RpcApi, BlockAddedNotification, Notification, RpcUtxoEntry, VirtualDaaScoreChangedNotification};
+use kaspa_pow::State;
+use kaspa_rpc_core::{api::rpc::RpcApi, BlockAddedNotification, Notification, RpcRawBlock, RpcUtxoEntry, VirtualDaaScoreChangedNotification};
 use kaspa_txscript::pay_to_address_script;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use secp256k1::Keypair;
@@ -182,15 +183,37 @@ pub fn is_utxo_spendable(entry: &RpcUtxoEntry, virtual_daa_score: u64, coinbase_
     entry.block_daa_score + needed_confirmations <= virtual_daa_score
 }
 
+pub fn solve_block_template(mut block: RpcRawBlock) -> RpcRawBlock {
+    let header: Header = (&block.header).into();
+    let state = State::new(&header);
+    let start_nonce = block.header.nonce;
+    let mut nonce = start_nonce;
+    let max_attempts = 10_000_000u64;
+
+    for _ in 0..max_attempts {
+        if state.check_pow(nonce).0 {
+            block.header.nonce = nonce;
+            return block;
+        }
+        nonce = nonce.wrapping_add(1);
+    }
+
+    panic!(
+        "failed to find valid PoW nonce within {} attempts (start nonce: {})",
+        max_attempts, start_nonce
+    );
+}
+
 pub async fn mine_block(pay_address: Address, submitting_client: &GrpcClient, listening_clients: &[ListeningClient]) {
     // Discard all unreceived block added notifications in each listening client
     listening_clients.iter().for_each(|x| x.block_added_listener().unwrap().drain());
 
     // Mine a block
     let template = submitting_client.get_block_template(pay_address.clone(), vec![]).await.unwrap();
-    let header: Header = (&template.block.header).into();
+    let solved_block = solve_block_template(template.block);
+    let header: Header = (&solved_block.header).into();
     let block_hash = header.hash;
-    submitting_client.submit_block(template.block, false).await.unwrap();
+    submitting_client.submit_block(solved_block, false).await.unwrap();
 
     // Wait for each listening client to get notified the submitted block was added to the DAG
     for client in listening_clients.iter() {
