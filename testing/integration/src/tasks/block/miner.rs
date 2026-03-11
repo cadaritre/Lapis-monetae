@@ -1,5 +1,5 @@
-use crate::tasks::{Stopper, Task};
 use crate::common::utils::solve_block_template;
+use crate::tasks::{Stopper, Task};
 use async_channel::Sender;
 use async_trait::async_trait;
 use kaspa_addresses::Address;
