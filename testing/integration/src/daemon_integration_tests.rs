@@ -2,7 +2,7 @@ use crate::common::{
     client::ListeningClient,
     client_notify::ChannelNotify,
     daemon::Daemon,
-    utils::{fetch_spendable_utxos, generate_tx, mine_block, solve_block_template, wait_for},
+    utils::{fetch_spendable_utxos, generate_tx, mine_block, required_fee, solve_block_template, wait_for},
 };
 use kaspa_addresses::Address;
 use kaspa_alloc::init_allocator_with_default_settings;
@@ -283,8 +283,10 @@ async fn daemon_utxos_propagation_test() {
     // The transaction here is later used to verify utxo return address RPC
     const NUMBER_INPUTS: u64 = 2;
     const NUMBER_OUTPUTS: u64 = 2;
-    const TX_AMOUNT: u64 = SIMNET_PARAMS.pre_deflationary_phase_base_subsidy * (NUMBER_INPUTS * 5 - 1) / 5;
-    let transaction = generate_tx(miner_schnorr_key, &utxos[0..NUMBER_INPUTS as usize], TX_AMOUNT, NUMBER_OUTPUTS, &user_address);
+    let tx_inputs = &utxos[0..NUMBER_INPUTS as usize];
+    let total_in = tx_inputs.iter().map(|(_, entry)| entry.amount).sum::<u64>();
+    let tx_amount = total_in - required_fee(NUMBER_INPUTS as usize, NUMBER_OUTPUTS);
+    let transaction = generate_tx(miner_schnorr_key, tx_inputs, tx_amount, NUMBER_OUTPUTS, &user_address);
     rpc_client1.submit_transaction((&transaction).into(), false).await.unwrap();
 
     let check_client = rpc_client1.clone();
@@ -315,7 +317,7 @@ async fn daemon_utxos_propagation_test() {
         assert_eq!(uc.removed.len() as u64, NUMBER_INPUTS);
         assert_eq!(uc.added.len() as u64, NUMBER_OUTPUTS);
         assert_eq!(uc.removed.iter().map(|x| x.utxo_entry.amount).sum::<u64>(), expected_coinbase_amount * NUMBER_INPUTS);
-        assert_eq!(uc.added.iter().map(|x| x.utxo_entry.amount).sum::<u64>(), TX_AMOUNT);
+        assert_eq!(uc.added.iter().map(|x| x.utxo_entry.amount).sum::<u64>(), tx_amount);
     }
 
     // Check the balance of both miner and user addresses
@@ -324,7 +326,7 @@ async fn daemon_utxos_propagation_test() {
         assert_eq!(miner_balance, (initial_blocks - NUMBER_INPUTS) * expected_coinbase_amount);
 
         let user_balance = x.get_balance_by_address(user_address.clone()).await.unwrap();
-        assert_eq!(user_balance, TX_AMOUNT);
+        assert_eq!(user_balance, tx_amount);
     }
 
     // UTXO Return Address Test

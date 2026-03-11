@@ -115,12 +115,10 @@ async fn sanity_test() {
                         .unwrap();
                     assert!(!is_synced);
 
-                    // Compute the expected block hash for the received block
-                    let header: Header = (&block.header).into();
-                    let block_hash = header.hash;
-
                     // Submit a solved template (PoW is validated before block acceptance).
                     let solved_block = solve_block_template(block.clone());
+                    let solved_header: Header = (&solved_block.header).into();
+                    let block_hash = solved_header.hash;
                     let response = rpc_client.submit_block(solved_block, false).await.unwrap();
                     assert_eq!(response.report, SubmitBlockReport::Success);
 
