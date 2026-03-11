@@ -113,14 +113,12 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Skip cargo build with devnet-prealloc feature (temporary)
-        run: |
-          echo "Temporarily skipped: cargo build --release --features devnet-prealloc --workspace --all --tests --benches"
+      - name: Run cargo build with devnet-prealloc feature
+        run: cargo build --release --features devnet-prealloc --workspace --all --tests --benches
 
-      - name: Run targeted regression tests (temporary)
+      - name: Run cargo test regular features
         run: |
-          cargo nextest run --release --workspace \
-            -E 'test(standard::tests::test_extract_address_and_encode_script) or test(rpc_tests::sanity_test) or test(daemon_integration_tests::daemon_utxos_propagation_test) or test(processes::coinbase::tests::calc_high_bps_total_rewards_delta) or test(processes::coinbase::tests::subsidy_test) or test(processes::coinbase::tests::subsidy_by_month_table_test)'
+          cargo nextest run --release --workspace
 
       - name: Run cargo doc tests
         run: cargo test --doc --release --workspace
