@@ -174,6 +174,34 @@ impl Subscription for VirtualChainChangedSubscription {
 
 static UTXOS_CHANGED_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 
+#[inline]
+fn increment_utxos_changed_subscriptions() -> usize {
+    match UTXOS_CHANGED_SUBSCRIPTIONS.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| current.checked_add(1)) {
+        Ok(previous) => previous + 1,
+        Err(current) => {
+            trace!(
+                "UtxosChangedSubscription counter overflow prevented, keeping count at {}",
+                current
+            );
+            current
+        }
+    }
+}
+
+#[inline]
+fn decrement_utxos_changed_subscriptions() -> usize {
+    match UTXOS_CHANGED_SUBSCRIPTIONS.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| current.checked_sub(1)) {
+        Ok(previous) => previous - 1,
+        Err(current) => {
+            trace!(
+                "UtxosChangedSubscription counter underflow prevented, keeping count at {}",
+                current
+            );
+            current
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UtxosChangedMutation {
     None,
@@ -327,7 +355,7 @@ impl UtxosChangedSubscription {
         let subscription = Self { data, listener_id };
         trace!(
             "UtxosChangedSubscription: {} in total (new {})",
-            UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
+            increment_utxos_changed_subscriptions(),
             subscription
         );
         subscription
@@ -368,7 +396,7 @@ impl Clone for UtxosChangedSubscription {
         let subscription = Self { data: RwLock::new(self.data().clone()), listener_id: self.listener_id };
         trace!(
             "UtxosChangedSubscription: {} in total (clone {})",
-            UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
+            increment_utxos_changed_subscriptions(),
             subscription
         );
         subscription
@@ -385,7 +413,7 @@ impl Drop for UtxosChangedSubscription {
     fn drop(&mut self) {
         trace!(
             "UtxosChangedSubscription: {} in total (drop {})",
-            UTXOS_CHANGED_SUBSCRIPTIONS.fetch_sub(1, Ordering::SeqCst) - 1,
+            decrement_utxos_changed_subscriptions(),
             self
         );
     }
