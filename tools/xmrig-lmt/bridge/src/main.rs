@@ -253,17 +253,21 @@ async fn send_notify(
     sink: &mut FramedWrite<tokio::net::tcp::OwnedWriteHalf, LinesCodec>,
     template: &Template,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let params = serde_json::json!([
+    let params = build_notify_params(template);
+    let notification = StratumNotification { method: "mining.notify", params };
+    let line = serde_json::to_string(&notification)?;
+    sink.send(line).await?;
+    Ok(())
+}
+
+fn build_notify_params(template: &Template) -> Value {
+    serde_json::json!([
         template.job_id.to_string(),
         template.pre_pow_hash_hex,
         template.timestamp,
         template.bits_hex,
         template.target_hex
-    ]);
-    let notification = StratumNotification { method: "mining.notify", params };
-    let line = serde_json::to_string(&notification)?;
-    sink.send(line).await?;
-    Ok(())
+    ])
 }
 
 #[derive(Debug)]
@@ -284,4 +288,74 @@ fn parse_submit(params: Value) -> Result<SubmitParams, Box<dyn std::error::Error
     let nonce = u64::from_str_radix(nonce_str, 16)?;
     let timestamp = params.get(3).and_then(|v| v.as_u64()).filter(|ts| *ts > 0);
     Ok(SubmitParams { job_id, nonce, timestamp })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_consensus_core::header::Header;
+
+    #[test]
+    fn parse_submit_accepts_hex_nonce_and_optional_timestamp() {
+        let params = serde_json::json!(["worker", "42", "0x00000000000000ff", 123456u64]);
+        let parsed = parse_submit(params).expect("submit params should parse");
+        assert_eq!(parsed.job_id, 42);
+        assert_eq!(parsed.nonce, 255);
+        assert_eq!(parsed.timestamp, Some(123456));
+    }
+
+    #[test]
+    fn parse_submit_rejects_short_or_invalid_params() {
+        let short = serde_json::json!(["worker", "42"]);
+        assert!(parse_submit(short).is_err());
+
+        let invalid_nonce = serde_json::json!(["worker", "42", "not_hex"]);
+        assert!(parse_submit(invalid_nonce).is_err());
+    }
+
+    #[test]
+    fn mining_notify_payload_shape_matches_protocol() {
+        let header = Header::new_finalized(
+            0,
+            vec![],
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            0,
+            0,
+            0,
+            0,
+            0.into(),
+            0,
+            Default::default(),
+        );
+        let template = Template {
+            job_id: 7,
+            block: RpcRawBlock { header: (&header).into(), transactions: vec![] },
+            pre_pow_hash_hex: "aa".repeat(32),
+            timestamp: 123u64,
+            bits_hex: "0x1d00ffff".to_string(),
+            target_hex: "00ff00ff00ff00ff".to_string(),
+        };
+
+        let params = build_notify_params(&template);
+        let arr = params.as_array().expect("notify params should be an array");
+        assert_eq!(arr.len(), 5);
+        assert_eq!(arr[0], Value::String("7".to_string()));
+        assert_eq!(arr[1], Value::String("aa".repeat(32)));
+        assert_eq!(arr[2], Value::from(123u64));
+        assert_eq!(arr[3], Value::String("0x1d00ffff".to_string()));
+        assert_eq!(arr[4], Value::String("00ff00ff00ff00ff".to_string()));
+    }
+
+    #[allow(dead_code)]
+    async fn rpc_call_signature_smoke<T: RpcApi>(api: &T, addr: RpcAddress, extra: RpcExtraData, block: RpcRawBlock) {
+        let _ = api.get_block_template_call(None, GetBlockTemplateRequest::new(addr, extra)).await;
+        let _ = api.submit_block_call(None, SubmitBlockRequest::new(block, false)).await;
+    }
+
+    #[test]
+    fn rpc_call_signature_smoke_compiles() {
+        let _ = rpc_call_signature_smoke::<GrpcClient>;
+    }
 }

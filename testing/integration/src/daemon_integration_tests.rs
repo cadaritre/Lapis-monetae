@@ -100,11 +100,30 @@ async fn daemon_mining_test() {
         }
     }
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    // Expect the blocks to be relayed to daemon #2
+    // Expect the blocks to be relayed to daemon #2.
+    // In CI this may take a bit longer than a fixed sleep, so poll deterministically.
+    let expected_sink = last_block_hash.unwrap();
+    let check_client = rpc_client2.clone();
+    wait_for(
+        50,
+        20,
+        move || {
+            let client = check_client.clone();
+            async fn chain_caught_up(client: GrpcClient, expected_sink: kaspa_hashes::Hash) -> bool {
+                match client.get_block_dag_info().await {
+                    Ok(info) => info.block_count == 10 && info.sink == expected_sink,
+                    Err(_) => false,
+                }
+            }
+            Box::pin(chain_caught_up(client, expected_sink))
+        },
+        "the nodes did not add and relay all mined blocks",
+    )
+    .await;
+
     let dag_info = rpc_client2.get_block_dag_info().await.unwrap();
     assert_eq!(dag_info.block_count, 10);
-    assert_eq!(dag_info.sink, last_block_hash.unwrap());
+    assert_eq!(dag_info.sink, expected_sink);
 
     // Check that acceptance data contains the expected coinbase tx ids
     let vc = rpc_client2
