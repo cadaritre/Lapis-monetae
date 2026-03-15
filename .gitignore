@@ -101,3 +101,14 @@ tools/xmrig-lmt/bridge/target/
 tools/xmrig-lmt/xmrig-fork/build/
 tools/xmrig-lmt/deps/
 tools/xmrig-lmt/xmrig-fork/bin/WinRing0/WinRing0x64.sys
+
+# PyInstaller / packaged GUI artifacts
+wallet-gui/build/
+wallet-gui/dist/
+wallet-gui/*.spec
+tools/xmrig-lmt/gui/build/
+tools/xmrig-lmt/gui/dist/
+tools/xmrig-lmt/gui/*.spec
+
+# Landing page
+landing/

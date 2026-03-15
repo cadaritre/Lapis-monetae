@@ -1,0 +1,15 @@
+{
+  "bridge_path": "",
+  "listen": "0.0.0.0:3333",
+  "rpc_url": "grpc://127.0.0.1:26110",
+  "pay_address": "",
+  "extra_data_hex": "",
+  "allow_non_daa": true,
+  "refresh_ms": 5000,
+  "xmrig_path": "",
+  "xmrig_url": "stratum+tcp://127.0.0.1:3333",
+  "xmrig_extra": "",
+  "start_miner_with_bridge": false,
+  "auto_restart_bridge": false,
+  "auto_restart_miner": false
+}

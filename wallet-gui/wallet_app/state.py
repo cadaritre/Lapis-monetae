@@ -5,7 +5,7 @@ allowing critical actions.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Any, Callable
 
 from .config import DEFAULT_NETWORK, resolve_cli_binary
 
@@ -22,6 +22,8 @@ class WalletState:
     node_connected: bool = False
     node_synced: bool | None = None
     pending_wallet_open: bool = False
+    node_rich_info: Any = None  # NodeRichInfo from cli_bridge
+    node_status_updated_at: str = ""
 
     _listeners: list[Callable[[], None]] = field(default_factory=list, repr=False)
 
@@ -66,6 +68,11 @@ class WalletState:
     def set_node_status(self, connected: bool, synced: bool | None) -> None:
         self.node_connected = connected
         self.node_synced = synced
+        self._notify()
+
+    def set_node_rich_info(self, rich_info: Any, updated_at: str = "") -> None:
+        self.node_rich_info = rich_info
+        self.node_status_updated_at = updated_at or ""
         self._notify()
 
     # ── Gate checks ──

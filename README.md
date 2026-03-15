@@ -1,5 +1,7 @@
 # Lapis Monetae (LMT)
 
+**Website:** [https://lapismonetae.org](https://lapismonetae.org) — Pre-built binaries, wallet GUI, and mining tools available for download.
+
 Lapis Monetae (LMT) is a Rust-based full node derived from the Kaspa codebase, adapted to run an independent network and currency named Lapis Monetae (ticker: LMT). This repository provides consensus, networking (P2P), RPC, wallet, and tooling necessary to operate the LMT network.
 
 ## Consensus & Roadmap
@@ -237,4 +239,3 @@ cargo bench
 ISC License. See [LICENSE](LICENSE) for details.
 
 ---
-by: cadaritre
